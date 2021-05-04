@@ -126,4 +126,8 @@ STATIC_URL = '/static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-AUTH_USER_MODEL="django_stripe_testapp.User"
+AUTH_USER_MODEL = "django_stripe_testapp.User"
+
+STRIPE_CHECKOUT_SUCCESS_URL = "http://localhost"
+STRIPE_CHECKOUT_CANCEL_URL = "http://localhost/cancel"
+STRIPE_PAYMENT_METHOD_TYPES = ["card"]

@@ -26,7 +26,7 @@ def add_stripe_customer_if_not_existing(f):
         if not user.stripe_customer_id:
             customer_kwargs = getattr(settings, 'STRIPE_CUSTOMER_GET_KWARGS', lambda x: {})(user)
             subscriptions.create_customer(user, **customer_kwargs)
-            user.save(update_fields=('stripe_customer-id',))
+            user.save(update_fields=('stripe_customer_id',))
         return f(user, *args, **kwargs)
     return wrapper
 

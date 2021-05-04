@@ -3,7 +3,6 @@ import os
 import sys
 import pytest
 import stripe
-from datetime import datetime, timedelta
 
 import subscriptions
 from subscriptions import UserProtocol
@@ -11,7 +10,6 @@ from tests.django_stripe_testapp.models import User
 
 from typing import List
 
-api_key = ''
 python_version = sys.version_info
 ci_string = f'{os.name}-{python_version.major}{python_version.minor}'
 
@@ -21,8 +19,14 @@ def pytest_addoption(parser):
 
 
 @pytest.fixture(scope="session", autouse=True)
-def setup_stripe(pytestconfig):
+def stripe_api_key(pytestconfig):
     stripe.api_key = pytestconfig.getoption("apikey")
+    return stripe_api_key
+
+
+@pytest.fixture(autouse=True)
+def setup_settings(stripe_api_key, settings):
+    settings.STRIPE_API_KEY = stripe_api_key
 
 
 @pytest.fixture(scope="session")
@@ -36,18 +40,13 @@ def stripe_unsubscribed_product_url() -> str:
 
 
 @pytest.fixture(scope="session")
-def checkout_success_url() -> str:
+def checkout_success_url(settings) -> str:
     return "http://localhost"
 
 
 @pytest.fixture(scope="session")
 def checkout_cancel_url() -> str:
     return "http://localhost/cancel"
-
-
-@pytest.fixture(scope="session")
-def payment_method_types() -> List[str]:
-    return ["card"]
 
 
 @pytest.fixture

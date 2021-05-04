@@ -3,13 +3,15 @@ from django_stripe import payments
 
 
 @pytest.mark.django_db
-def test_checkout(user):
-    session = payments.create_checkout(user)
+def test_checkout(user, stripe_unsubscribed_price_id):
+    session = payments.create_checkout(user, stripe_unsubscribed_price_id)
+    assert session["id"]
 
 
 @pytest.mark.django_db
-def test_billing_portal():
-    pass
+def test_billing_portal(user):
+    session = payments.create_billing_portal(user)
+    assert "stripe.com" in session["url"]
 
 
 @pytest.mark.django_db
