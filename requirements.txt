@@ -1,0 +1,4 @@
+django
+djangorestframework
+stripe
+#stripe_subscriptions
