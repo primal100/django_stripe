@@ -10,9 +10,6 @@ def return_empty_kwargs(**kwargs) -> Dict:
 
 class Settings:
 
-    def __init__(self):
-        self._loaded_strings = {}
-
     @property
     def STRIPE_CHECKOUT_SUCCESS_URL(self) -> str:
         return settings.STRIPE_CHECKOUT_SUCCESS_URL
@@ -37,15 +34,6 @@ class Settings:
     def STRIPE_BILLING_PORTAL_RETURN_URL(self) -> Optional[str]:
         return getattr(settings, '', None)
 
-    @property
-    def STRIPE_SERIALIZERS(self) -> Dict[str, Union[Serializer, ListSerializer]]:
-        serializers = getattr(settings, '', {})
-        for name, serializer in serializers.items():
-            if isinstance(serializer, str):
-                if serializer not in self._loaded_strings:
-                    self._loaded_strings[serializer] = import_string(serializer)
-                serializers[name] = self._loaded_strings[name]
-        return serializers
 
 
 django_stripe_settings = Settings()

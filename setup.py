@@ -17,7 +17,7 @@ setup(
     url=main_ns['version'],
     license="MIT License",
     author='Paul Martin',
-    description='Easier management of subscriptions with Stripe',
+    description='Easier management of subscriptions with Stripe in Django',
     long_description=readme,
     classifiers=[
         'Development Status :: 5 - Production/Stable',
@@ -30,5 +30,5 @@ setup(
     ],
     python_requires='>=3.6',
     setup_requires=['wheel'],
-    install_requires=["stripe"],
+    install_requires=["django, djangorestframework, stripe"],
 )

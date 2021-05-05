@@ -9,11 +9,12 @@ from .utils import get_user_if_token_user
 from typing import Dict, Any, Type
 
 
-class SwappableSerializerMixin:
-    serializer_class = None
+class StripeViewMixin:
+    serializer_class: Type = None
+    throttle_scope = 'payments'
 
     def get_serializer_class(self) -> Type:
-        return serializers.get_serializer_class(self.serializer_class)
+        return self.serializer_class(self.serializer_class)
 
     def get_serializer_context(self) -> Dict[str, Any]:
         return {
@@ -27,17 +28,20 @@ class SwappableSerializerMixin:
         return serializer_class(*args,  **kwargs)
 
 
-class StripeCheckoutView(APIView, SwappableSerializerMixin):
+class StripeCheckoutView(APIView, StripeViewMixin):
     serializer_class = serializers.CheckoutSessionSerializer
-    throttle_scope = 'payments'
     permission_classes = (IsAuthenticated,)
+
+    def make_request(self, request, **data):
+        session = payments.create_checkout(request.user, data['price_id'])
+        return {'sessionId': session['id']}
 
     def post(self, request):
         serializer = self.get_serializer(data=request.data)
         if serializer.is_valid():
             data = serializer.data
-            session = payments.create_checkout(request.user, data['price_id'])
-            return Response({'sessionId': session['id']})
+            result = self.make_request(request, **data)
+            return Response(result)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -45,12 +49,16 @@ class StripeBillingPortalView(APIView):
     throttle_scope = 'payments'
     permission_classes = (IsAuthenticated,)
 
-    def post(self, request):
+    def make_request(self, request):
         session = payments.create_billing_portal(request.user)
-        return Response({'url': session['url']})
+        return {'url': session['url']}
+
+    def post(self, request):
+        result = self..make_request(request)
+        return Response(result)
 
 
-class StripePricesView(APIView, SwappableSerializerMixin):
+class StripePricesView(APIView, StripeViewMixin):
     serializer_class = serializers.PriceSerializer
     throttle_scope = 'payments'
 
