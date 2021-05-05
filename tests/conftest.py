@@ -3,7 +3,10 @@ import os
 import sys
 import pytest
 import stripe
+from unittest import mock
 
+from django_stripe import payments, signals
+from django_stripe.tests import signal_mock
 import subscriptions
 from subscriptions import UserProtocol
 from tests.django_stripe_testapp.models import User
@@ -29,6 +32,14 @@ def setup_settings(stripe_api_key, settings):
     settings.STRIPE_API_KEY = stripe_api_key
 
 
+@pytest.fixture(autouse=True)
+def mock_signals():
+    for s in signals.all_signals:
+        s.connect(signal_mock)
+    yield
+    signal_mock.reset_mock()
+
+
 @pytest.fixture(scope="session")
 def stripe_subscription_product_url() -> str:
     return "http://localhost/paywall"
@@ -40,7 +51,7 @@ def stripe_unsubscribed_product_url() -> str:
 
 
 @pytest.fixture(scope="session")
-def checkout_success_url(settings) -> str:
+def checkout_success_url() -> str:
     return "http://localhost"
 
 
@@ -55,7 +66,12 @@ def user_email() -> str:
 
 
 @pytest.fixture
-def user(user_email) -> UserProtocol:
+def user_alternative_email() -> str:
+    return f'stripe-subscriptions-alternative-{ci_string}@example.com'
+
+
+@pytest.fixture
+def user(user_email):
     user = User(id=1, email=user_email, first_name='Test', last_name="User")
     user.save()
     yield user
@@ -63,13 +79,40 @@ def user(user_email) -> UserProtocol:
         subscriptions.delete_customer(user)
 
 
-@pytest.fixture
-def user_with_customer_id(user, user_email) -> UserProtocol:
-    customers = stripe.Customer.list(email=user_email)
+def create_customer_id(user):
+    customers = stripe.Customer.list(email=user.email)
     for customer in customers:
         stripe.Customer.delete(customer['id'])
-    subscriptions.create_customer(user, description="stripe-subscriptions test runner user")
+    payments.create_customer(user, description="stripe-subscriptions test runner user")
     return user
+
+
+@pytest.fixture
+def user_with_customer_id(user):
+    return create_customer_id(user)
+
+
+@pytest.fixture(params=["no-customer-id", "with-customer-id"])
+def user_with_and_without_customer_id(request, user):
+    if request.param == "no-customer-id":
+        return user
+    return create_customer_id(user)
+
+
+@pytest.fixture
+def mock_customer_retrieve(monkeypatch):
+    monkeypatch.setattr(stripe.Customer, "retrieve", mock.Mock())
+
+
+@pytest.fixture
+def disable_keep_customer_email_updated(settings):
+    settings.STRIPE_KEEP_CUSTOMER_EMAIL_UPDATED = False
+
+
+@pytest.fixture
+def authenticated_client(client, user_with_and_without_customer_id):
+    client.force_login(user_with_and_without_customer_id)
+    return client
 
 
 @pytest.fixture

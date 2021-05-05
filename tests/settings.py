@@ -131,3 +131,4 @@ AUTH_USER_MODEL = "django_stripe_testapp.User"
 STRIPE_CHECKOUT_SUCCESS_URL = "http://localhost"
 STRIPE_CHECKOUT_CANCEL_URL = "http://localhost/cancel"
 STRIPE_PAYMENT_METHOD_TYPES = ["card"]
+STRIPE_BILLING_PORTAL_RETURN_URL = "http://localhost"

@@ -1,6 +1,7 @@
 from django.apps import AppConfig
 from django.conf import settings
 import stripe
+from . import __version__, app_name, url
 
 
 class DjangoStripeConfig(AppConfig):
@@ -9,7 +10,10 @@ class DjangoStripeConfig(AppConfig):
 
     def ready(self):
         stripe.api_key = getattr(settings, 'STRIPE_API_KEY', None)
-        app_name = getattr(settings, "APPNAME", "django-stripe")
-        app_url = getattr(settings, "APPURL", "https://github.com/primal100/django_stripe")
-        app_version = getattr(settings, 'VERSION', '0.1')
-        stripe.set_app_info(app_name, version=app_version, url=app_url)
+        stripe_app_data = getattr(settings, "STRIPE_APP_DATA", {
+            'name': app_name,
+            'url': url,
+            'version': __version__
+        })
+        stripe.set_app_info(**stripe_app_data)
+        from . import signal_receivers
