@@ -8,10 +8,9 @@ from unittest import mock
 from django_stripe import payments, signals
 from django_stripe.tests import signal_mock
 import subscriptions
-from subscriptions import UserProtocol
 from tests.django_stripe_testapp.models import User
 
-from typing import List
+from typing import List, Dict, Any
 
 python_version = sys.version_info
 ci_string = f'{os.name}-{python_version.major}{python_version.minor}'
@@ -99,6 +98,29 @@ def user_with_and_without_customer_id(request, user):
     return create_customer_id(user)
 
 
+@pytest.fixture(params=["no-user", "user"])
+def no_user_or_user(request, user):
+    if request.param == "no-user":
+        return None
+    return user
+
+
+@pytest.fixture
+def permission_error(no_user_or_user) -> str:
+    if no_user_or_user:
+        return 'You do not have permission to perform this action.'
+    return 'Authentication credentials were not provided.'
+
+
+@pytest.fixture(params=["no-user", "no-customer-id", "with-customer-id"])
+def no_user_and_user_with_and_without_customer_id(request, user):
+   if request.param == "no-user":
+        return None
+   elif request.param == "no-customer-id":
+        return user
+   return create_customer_id(user)
+
+
 @pytest.fixture
 def mock_customer_retrieve(monkeypatch):
     monkeypatch.setattr(stripe.Customer, "retrieve", mock.Mock())
@@ -109,17 +131,56 @@ def disable_keep_customer_email_updated(settings):
     settings.STRIPE_KEEP_CUSTOMER_EMAIL_UPDATED = False
 
 
-@pytest.fixture
-def authenticated_client(client, user_with_and_without_customer_id):
-    client.force_login(user_with_and_without_customer_id)
-    return client
+@pytest.fixture()
+def api_client():
+
+    from rest_framework.test import APIClient
+
+    return APIClient()
 
 
 @pytest.fixture
-def subscribed_user(user_with_customer_id, stripe_price_id) -> UserProtocol:
+def client_no_user_and_user_with_and_without_stripe_id(api_client, no_user_and_user_with_and_without_customer_id):
+    if no_user_and_user_with_and_without_customer_id:
+        api_client.force_login(user_with_and_without_customer_id)
+    return api_client
+
+
+@pytest.fixture
+def client_no_user_and_without_stripe_id(api_client, no_user_or_user):
+    if no_user_or_user:
+        api_client.force_login(no_user_or_user)
+    return api_client
+
+
+@pytest.fixture
+def authenticated_client_with_without_customer_id(api_client, user_with_and_without_customer_id):
+    api_client.force_login(user_with_and_without_customer_id)
+    return api_client
+
+
+@pytest.fixture
+def authenticated_client_with_payment_method(api_client, user_with_payment_method):
+    api_client.force_login(user_with_payment_method)
+    return api_client
+
+
+@pytest.fixture
+def authenticated_client_with_subscribed_user(api_client, subscribed_user):
+    api_client.force_login(subscribed_user)
+    return api_client
+
+
+@pytest.fixture
+def user_with_payment_method(user_with_customer_id):
     subscriptions.tests.create_payment_method(user_with_customer_id)
-    subscriptions.create_subscription(user_with_customer_id, stripe_price_id)
     return user_with_customer_id
+
+
+@pytest.fixture
+def subscribed_user(user_with_payment_method, stripe_price_id):
+    subscriptions.create_subscription(user_with_payment_method, stripe_price_id)
+    return user_with_payment_method
 
 
 @pytest.fixture(scope="session")
@@ -138,6 +199,11 @@ def stripe_subscription_product_id(stripe_subscription_product_url, subscribed_p
 
 
 @pytest.fixture(scope="session")
+def stripe_price_currency() -> str:
+    return "usd"
+
+
+@pytest.fixture(scope="session")
 def unsubscribed_product_name() -> str:
     return 'Silver'
 
@@ -153,14 +219,14 @@ def stripe_unsubscribed_product_id(unsubscribed_product_name, stripe_unsubscribe
 
 
 @pytest.fixture(scope="session")
-def stripe_price_id(stripe_subscription_product_id) -> str:
+def stripe_price_id(stripe_subscription_product_id, stripe_price_currency) -> str:
     prices = stripe.Price.list(product=stripe_subscription_product_id, active=True, limit=1)
     if prices:
         price = prices.data[0]
     else:
         price = stripe.Price.create(
             unit_amount=129,
-            currency="usd",
+            currency=stripe_price_currency,
             recurring={"interval": "month"},
             product=stripe_subscription_product_id,
         )
@@ -168,14 +234,14 @@ def stripe_price_id(stripe_subscription_product_id) -> str:
 
 
 @pytest.fixture(scope="session")
-def stripe_unsubscribed_price_id(stripe_unsubscribed_product_id) -> str:
+def stripe_unsubscribed_price_id(stripe_unsubscribed_product_id, stripe_price_currency) -> str:
     prices = stripe.Price.list(product=stripe_unsubscribed_product_id, active=True, limit=1)
     if prices:
         price = prices.data[0]
     else:
         price = stripe.Price.create(
             unit_amount=9999,
-            currency="usd",
+            currency=stripe_price_currency,
             recurring={"interval": "year"},
             product=stripe_unsubscribed_product_id,
         )
@@ -183,7 +249,7 @@ def stripe_unsubscribed_price_id(stripe_unsubscribed_product_id) -> str:
 
 
 @pytest.fixture
-def expected_subscription_prices(stripe_subscription_product_id, stripe_price_id) -> List:
+def expected_subscription_prices(stripe_subscription_product_id, stripe_price_id, stripe_price_currency) -> List:
     return [
         {'id': stripe_price_id,
          'recurring': {
@@ -194,7 +260,7 @@ def expected_subscription_prices(stripe_subscription_product_id, stripe_price_id
               "usage_type": "licensed",
          },
          'type': 'recurring',
-         'currency': 'usd',
+         'currency': stripe_price_currency,
          'unit_amount': 129,
          'unit_amount_decimal': '129',
          'nickname': None,
@@ -203,18 +269,42 @@ def expected_subscription_prices(stripe_subscription_product_id, stripe_price_id
          'subscription_info': {'subscribed': True, 'cancel_at': None}}]
 
 
+
+@pytest.fixture
+def expected_subscription_prices_unsubscribed(stripe_subscription_product_id, stripe_price_id,
+                                              stripe_price_currency) -> List:
+    return [
+        {'id': stripe_price_id,
+         'recurring': {
+              "aggregate_usage": None,
+              "interval": "month",
+              "interval_count": 1,
+              "trial_period_days": None,
+              "usage_type": "licensed",
+         },
+         'type': 'recurring',
+         'currency': stripe_price_currency,
+         'unit_amount': 129,
+         'unit_amount_decimal': '129',
+         'nickname': None,
+         'metadata': {},
+         'product': stripe_subscription_product_id,
+         'subscription_info': {'subscribed': False, 'cancel_at': None}}]
+
+
 @pytest.fixture
 def expected_subscription_products_and_prices(stripe_subscription_product_id, stripe_price_id,
                                               subscribed_product_name, stripe_unsubscribed_product_id,
                                               unsubscribed_product_name, stripe_unsubscribed_price_id,
                                               stripe_subscription_product_url,
-                                              stripe_unsubscribed_product_url) -> List:
+                                              stripe_unsubscribed_product_url,
+                                              stripe_price_currency) -> List:
     return [
         {'id': stripe_unsubscribed_product_id,
          'images': [],
          'metadata': {},
          'name': unsubscribed_product_name,
-            'prices': [{'currency': 'usd',
+            'prices': [{'currency': stripe_price_currency,
                   'id': stripe_unsubscribed_price_id,
                   'metadata': {},
                   'nickname': None,
@@ -249,7 +339,7 @@ def expected_subscription_products_and_prices(stripe_subscription_product_id, st
                       "usage_type": "licensed"
                     },
                      'type': 'recurring',
-                     'currency': 'usd',
+                     'currency': stripe_price_currency,
                      'unit_amount': 129,
                      'unit_amount_decimal': '129',
                      'nickname': None,
@@ -257,3 +347,81 @@ def expected_subscription_products_and_prices(stripe_subscription_product_id, st
                      'subscription_info': {'subscribed': True, 'cancel_at': None}}],
          'subscription_info': {'subscribed': True, 'cancel_at': None}}
     ]
+
+
+@pytest.fixture
+def expected_subscription_products_and_prices_unsubscribed(stripe_subscription_product_id, stripe_price_id,
+                                              subscribed_product_name, stripe_unsubscribed_product_id,
+                                              unsubscribed_product_name, stripe_unsubscribed_price_id,
+                                              stripe_subscription_product_url,
+                                              stripe_unsubscribed_product_url,
+                                              stripe_price_currency) -> List:
+    return [
+        {'id': stripe_unsubscribed_product_id,
+         'images': [],
+         'metadata': {},
+         'name': unsubscribed_product_name,
+            'prices': [{'currency': stripe_price_currency,
+                  'id': stripe_unsubscribed_price_id,
+                  'metadata': {},
+                  'nickname': None,
+                  'recurring': {'aggregate_usage': None,
+                                'interval': 'year',
+                                'interval_count': 1,
+                                'trial_period_days': None,
+                                'usage_type': 'licensed'},
+                  'subscription_info': {'cancel_at': None, 'subscribed': False},
+                  'type': 'recurring',
+                  'unit_amount': 9999,
+                  'unit_amount_decimal': '9999'}],
+         'shippable': None,
+         'subscription_info': {'cancel_at': None, 'subscribed': False},
+         'type': 'service',
+         'unit_label': None,
+         'url': stripe_unsubscribed_product_url},
+        {'id': stripe_subscription_product_id,
+         'images': [],
+         'type': 'service',
+         'name': subscribed_product_name,
+         'shippable': None,
+         'unit_label': None,
+         'url': stripe_subscription_product_url,
+         'metadata': {},
+         'prices': [{'id': stripe_price_id,
+                     'recurring': {
+                      "aggregate_usage": None,
+                      "interval": "month",
+                      "interval_count": 1,
+                      "trial_period_days": None,
+                      "usage_type": "licensed"
+                    },
+                     'type': 'recurring',
+                     'currency': stripe_price_currency,
+                     'unit_amount': 129,
+                     'unit_amount_decimal': '129',
+                     'nickname': None,
+                     'metadata': {},
+                     'subscription_info': {'subscribed': False, 'cancel_at': None}}],
+         'subscription_info': {'subscribed': False, 'cancel_at': None}}
+    ]
+
+
+@pytest.fixture
+def subscription_response() -> Dict[str, Any]:
+    """current_period_end, current_period_start, id, latest_invoice and start_date
+    have been removed as they are not consistent values"""
+    return {'cancel_at': None,
+             'days_until_due': None,
+             'status': 'active',
+             'trial_end': None,
+            'trial_start': None}
+
+
+@pytest.fixture
+def non_existing_price_id() -> str:
+    return 'price_1In1oOCz06et8VuzMAGHcXYZ'
+
+
+@pytest.fixture
+def non_existing_product_id() -> str:
+    return 'prod_JPrXuHkkBJ3ABC'

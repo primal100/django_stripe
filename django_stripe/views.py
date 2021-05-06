@@ -1,20 +1,23 @@
+import stripe
+from stripe.error import StripeError
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-import subscriptions
+from .permissions import StripeCustomerIdRequiredOrReadOnly
+from subscriptions.types import Protocol
 from . import serializers
 from . import payments
-from .utils import get_user_if_token_user
 from typing import Dict, Any, Type
 
 
-class StripeViewMixin:
+class StripeViewMixin(Protocol):
     serializer_class: Type = None
     throttle_scope = 'payments'
+    status_code = status.HTTP_200_OK
 
     def get_serializer_class(self) -> Type:
-        return self.serializer_class(self.serializer_class)
+        return self.serializer_class
 
     def get_serializer_context(self) -> Dict[str, Any]:
         return {
@@ -27,6 +30,20 @@ class StripeViewMixin:
         kwargs.setdefault('context', self.get_serializer_context())
         return serializer_class(*args,  **kwargs)
 
+    def make_request(self, request, **data):
+        raise NotImplementedError
+
+    def run(self, request):
+        serializer = self.get_serializer(data=request.data or request.query_params)
+        if serializer.is_valid():
+            data = serializer.data
+            try:
+                result = self.make_request(request, **data)
+            except StripeError as e:
+                raise
+            return Response(result, status=self.status_code)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
 
 class StripeCheckoutView(APIView, StripeViewMixin):
     serializer_class = serializers.CheckoutSessionSerializer
@@ -37,50 +54,55 @@ class StripeCheckoutView(APIView, StripeViewMixin):
         return {'sessionId': session['id']}
 
     def post(self, request):
-        serializer = self.get_serializer(data=request.data)
-        if serializer.is_valid():
-            data = serializer.data
-            result = self.make_request(request, **data)
-            return Response(result)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        return self.run(request)
 
 
 class StripeBillingPortalView(APIView):
-    throttle_scope = 'payments'
     permission_classes = (IsAuthenticated,)
+    throttle_scope = "payments"
 
     def make_request(self, request):
         session = payments.create_billing_portal(request.user)
         return {'url': session['url']}
 
     def post(self, request):
-        result = self..make_request(request)
+        result = self.make_request(request)
         return Response(result)
 
 
 class StripePricesView(APIView, StripeViewMixin):
     serializer_class = serializers.PriceSerializer
-    throttle_scope = 'payments'
+
+    def make_request(self, request, **data):
+        return payments.get_subscription_prices(request.user, **data)
 
     def get(self, request):
-        serializer = self.get_serializer(data=request.data)
-        if serializer.is_valid():
-            data = serializer.data
-            user = get_user_if_token_user(request.user)
-            result = subscriptions.get_subscription_prices(user, **data)
-            return Response(result)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        return self.run(request)
 
 
-class StripeProductsView(APIView, SwappableSerializerMixin):
+class StripeProductsView(APIView, StripeViewMixin):
     serializer_class = serializers.ProductSerializer
-    throttle_scope = 'payments'
+
+    def make_request(self, request, **data):
+        return payments.get_subscription_products(request.user, **data)
 
     def get(self, request):
-        serializer = self.get_serializer(data=request.data)
-        if serializer.is_valid():
-            data = serializer.data
-            user = get_user_if_token_user(request.user)
-            result = subscriptions.get_subscription_products_and_prices(user, **data)
-            return Response(result)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        return self.run(request)
+
+
+class StripeSubscriptionView(APIView, StripeViewMixin):
+    status_code = status.HTTP_201_CREATED
+    serializer_class = serializers.SubscriptionSerializer
+    permission_classes = (StripeCustomerIdRequiredOrReadOnly,)
+    response_keys = ['id', 'cancel_at', 'current_period_end', 'current_period_start', 'days_until_due',
+                     'latest_invoice', 'start_date', 'status', 'trial_end', 'trial_start']
+
+    def make_response(self, subscription: stripe.Subscription) -> Dict[str, Any]:
+        return {k: subscription[k] for k in self.response_keys}
+
+    def make_request(self, request, **data):
+        subscription = payments.create_subscription(request.user, **data)
+        return self.make_response(subscription)
+
+    def post(self, request):
+        return self.run(request)

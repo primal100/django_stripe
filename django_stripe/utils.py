@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth import get_user_model
+from functools import wraps
 from typing import Any
 
 
@@ -18,3 +19,11 @@ def get_user_if_token_user(user: Any):
         elif not isinstance(user, models.Model):
             return User.objects.get(id=user.id)
     return user
+
+
+def get_actual_user(f):
+    @wraps(f)
+    def wrapper(user, *args, **kwargs):
+        user = get_user_if_token_user(user)
+        return f(user, *args, **kwargs)
+    return wrapper

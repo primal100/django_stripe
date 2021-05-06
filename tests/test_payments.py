@@ -1,5 +1,6 @@
 import pytest
 import stripe
+import subscriptions
 from django_stripe import payments
 from django_stripe import signals
 from django_stripe.tests import assert_customer_id_exists, assert_signal_called, assert_customer_email
@@ -68,8 +69,44 @@ def test_billing_portal(user_with_and_without_customer_id):
 
 
 @pytest.mark.django_db
-def test_new_subscription():
-    pass
+def test_price_list_subscribed(subscribed_user, stripe_subscription_product_id, expected_subscription_prices):
+    result = payments.get_subscription_prices(subscribed_user, product=stripe_subscription_product_id)
+    assert result == expected_subscription_prices
+
+
+@pytest.mark.django_db
+def test_price_list_unsubscribed(no_user_and_user_with_and_without_customer_id, stripe_subscription_product_id,
+                                 expected_subscription_prices_unsubscribed):
+    result = payments.get_subscription_prices(no_user_and_user_with_and_without_customer_id,
+                                              product=stripe_subscription_product_id)
+    assert result == expected_subscription_prices_unsubscribed
+
+
+@pytest.mark.django_db
+def test_product_list_subscribed(subscribed_user, stripe_subscription_product_id, stripe_unsubscribed_product_id,
+                                 expected_subscription_products_and_prices):
+    result = payments.get_subscription_products(subscribed_user, ids=[stripe_subscription_product_id,
+                                                                      stripe_unsubscribed_product_id])
+    assert result == expected_subscription_products_and_prices
+
+
+@pytest.mark.django_db
+def test_product_list_unsubscribed(no_user_and_user_with_and_without_customer_id,
+                                   stripe_subscription_product_id,
+                                   stripe_unsubscribed_product_id,
+                                   expected_subscription_products_and_prices_unsubscribed):
+    result = payments.get_subscription_products(no_user_and_user_with_and_without_customer_id,
+                                                ids=[stripe_subscription_product_id,
+                                                     stripe_unsubscribed_product_id])
+    assert result == expected_subscription_products_and_prices_unsubscribed
+
+
+@pytest.mark.django_db
+def test_new_subscription(user_with_payment_method, stripe_price_id, stripe_subscription_product_id):
+    payments.create_subscription(user_with_payment_method, stripe_price_id)
+    response = subscriptions.is_subscribed_and_cancelled_time(user_with_payment_method, stripe_subscription_product_id)
+    assert response['subscribed'] is True
+    assert response['cancel_at'] is None
 
 
 @pytest.mark.django_db
@@ -94,16 +131,6 @@ def test_check_subscription():
 
 @pytest.mark.django_db
 def test_invoice_list():
-    pass
-
-
-@pytest.mark.django_db
-def test_price_list():
-    pass
-
-
-@pytest.mark.django_db
-def test_product_list():
     pass
 
 
