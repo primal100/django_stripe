@@ -3,7 +3,7 @@ import stripe
 import subscriptions
 from django_stripe import payments
 from django_stripe import signals
-from django_stripe.tests import assert_customer_id_exists, assert_signal_called, assert_customer_email
+from django_stripe.tests import assert_customer_id_exists, assert_signal_called, assert_customer_email, assert_customer_description
 
 
 @pytest.mark.django_db
@@ -22,16 +22,25 @@ def test_modify_customer(user_with_customer_id, user_alternative_email):
 
 @pytest.mark.django_db
 @pytest.mark.parametrize('update_fields', [None, ('email',)])
-def test_modify_customer_on_save_update(user_with_customer_id, user_alternative_email, update_fields):
+def test_modify_customer_on_save_email_update(user_with_customer_id, user_alternative_email, update_fields):
     user_with_customer_id.email = user_alternative_email
     user_with_customer_id.save(update_fields=update_fields)
     assert_customer_email(user_with_customer_id, user_alternative_email)
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize('update_fields', [None, ('first_name',)])
+def test_modify_customer_on_save_first_name_update(user_with_customer_id, user_alternative_email, update_fields):
+    assert_customer_description(user_with_customer_id, "Test User")
+    user_with_customer_id.first_name = "John"
+    user_with_customer_id.save(update_fields=update_fields)
+    assert_customer_description(user_with_customer_id, "John User")
+
+
+@pytest.mark.django_db
 def test_modify_customer_on_save_no_update(user_with_customer_id, user_alternative_email, user_email):
     user_with_customer_id.email = user_alternative_email
-    user_with_customer_id.save(update_fields=('first_name',))
+    user_with_customer_id.save(update_fields=('is_active',))
     assert_customer_email(user_with_customer_id, user_email)
 
 
@@ -53,9 +62,19 @@ def test_modify_customer_setting_disabled(user_with_customer_id, user_alternativ
 
 
 @pytest.mark.django_db
-def test_checkout(user_with_and_without_customer_id, stripe_unsubscribed_price_id):
-    session = payments.create_checkout(user_with_and_without_customer_id, stripe_unsubscribed_price_id)
+def test_subscription_checkout(user_with_and_without_customer_id, stripe_unsubscribed_price_id):
+    session = payments.create_subscription_checkout(user_with_and_without_customer_id, stripe_unsubscribed_price_id)
     assert session["id"]
+    assert session['setup_intent'] is None
+    assert_signal_called(signals.checkout_created)
+    assert_customer_id_exists(user_with_and_without_customer_id)
+
+
+@pytest.mark.django_db
+def test_setup_checkout(user_with_and_without_customer_id):
+    session = payments.create_setup_checkout(user_with_and_without_customer_id)
+    assert session["id"]
+    assert session['setup_intent'] is not None
     assert_signal_called(signals.checkout_created)
     assert_customer_id_exists(user_with_and_without_customer_id)
 

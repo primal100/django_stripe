@@ -4,8 +4,8 @@ from functools import wraps
 from .conf import settings
 from rest_framework.exceptions import NotAuthenticated
 from . import signals
-from .utils import get_actual_user
-from typing import List, Dict, Any
+from .utils import get_actual_user, user_description
+from typing import List, Dict, Any, Callable
 
 
 def add_stripe_customer_if_not_existing(f):
@@ -23,7 +23,7 @@ def create_customer(user, **kwargs):
         raise NotAuthenticated('This stripe method requires a logged in user')
     if not user.stripe_customer_id:
         customer_kwargs = settings.STRIPE_NEW_CUSTOMER_GET_KWARGS(**kwargs)
-        customer = subscriptions.create_customer(user, description=str(user), **customer_kwargs)
+        customer = subscriptions.create_customer(user, description=user_description(user), **customer_kwargs)
         user.save(update_fields=('stripe_customer_id',))
         signals.new_customer.send(sender=user, customer=customer)
     return user
@@ -37,28 +37,27 @@ def modify_customer(user, **kwargs):
     return customer
 
 
-def create_subscription_checkout(user, price_id: str, **kwargs) -> stripe.checkout.Session:
-    return stripe.checkout.Session.create(
-        customer=user.stripe_customer_id,
-        mode="setup",
-        **kwargs
-    )
-
-
 @add_stripe_customer_if_not_existing
-def create_checkout(user: subscriptions.types.UserProtocol, price_id: str, **kwargs) -> stripe.checkout.Session:
+def create_checkout(user: subscriptions.types.UserProtocol, method: Callable, **kwargs) -> stripe.checkout.Session:
     checkout_kwargs = {
         'user': user,
-        'price_id': price_id,
         'client_reference_id': user.id,
         'success_url': settings.STRIPE_CHECKOUT_SUCCESS_URL,
         'cancel_url': settings.STRIPE_CHECKOUT_CANCEL_URL,
         'payment_method_types': settings.STRIPE_PAYMENT_METHOD_TYPES
     }
     checkout_kwargs.update(**kwargs)
-    session = create_subscription_checkout(**checkout_kwargs)
+    session = method(**checkout_kwargs)
     signals.checkout_created.send(sender=user, session=session)
     return session
+
+
+def create_subscription_checkout(user: subscriptions.types.UserProtocol, price_id: str, **kwargs) -> stripe.checkout.Session:
+    return create_checkout(user, subscriptions.create_subscription_checkout, price_id=price_id, **kwargs)
+
+
+def create_setup_checkout(user: subscriptions.types.UserProtocol, **kwargs) -> stripe.checkout.Session:
+    return create_checkout(user, method=subscriptions.create_setup_checkout, **kwargs)
 
 
 @add_stripe_customer_if_not_existing

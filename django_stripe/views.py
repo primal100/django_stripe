@@ -62,15 +62,26 @@ class StripeViewWithSerializerMixin(StripeViewMixin, Protocol):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-class StripeCheckoutView(APIView, StripeViewMixin):
+class StripePriceCheckoutView(APIView, StripeViewMixin):
     permission_classes = (IsAuthenticated,)
 
+    @staticmethod
+    def make_checkout(self, request, **data):
+        return payments.create_subscription_checkout(request.user, **data)
+
     def make_request(self, request, **data):
-        session = payments.create_checkout(request.user, **data)
+        session = self.make_checkout(request, **data)
         return {'sessionId': session['id']}
 
     def post(self, request, price_id: str):
         return self.run_stripe(request, price_id=price_id)
+
+
+class StripeSetupCheckoutView(APIView, StripeViewMixin):
+
+    @staticmethod
+    def make_checkout(self, request, **data):
+        return payments.create_setup_checkout(request.user, **data)
 
 
 class StripeBillingPortalView(APIView, StripeViewMixin):
@@ -134,6 +145,7 @@ class SubscriptionFormView(LoginRequiredMixin, FormView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context['stripe_public_key'] = settings.STRIPE_PUBLIC_KEY
+        context['user'] = self.request.user
         return context
 
     def form_valid(self, form):
@@ -151,12 +163,21 @@ class SubscriptionFormView(LoginRequiredMixin, FormView):
         return self.render_to_response(self.get_context_data(form=form))
 
 
-class CheckoutView(LoginRequiredMixin, TemplateView):
+class GoToCheckoutSetupView(LoginRequiredMixin, TemplateView):
     template_name = 'django_stripe/checkout.html'
+
+    def make_checkout(self):
+        return payments.create_setup_checkout(self.request.user)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        price_id = self.request.GET['price_id']
-        session = payments.create_checkout(self.request.user, price_id)
+        session = self.make_checkout()
         context.update({'sessionId': session['id'], 'stripe_public_key': settings.STRIPE_PUBLIC_KEY})
         return context
+
+
+class GoToCheckoutSubscriptionView(GoToCheckoutSetupView):
+
+    def make_checkout(self):
+        price_id = self.request.GET['price_id']
+        return payments.create_subscription_checkout(self.request.user, price_id=price_id)

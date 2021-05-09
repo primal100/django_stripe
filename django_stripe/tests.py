@@ -43,3 +43,8 @@ def make_request(method: Callable, view: str, expected_status_code: int, url_par
 def assert_customer_email(user, email: str):
     customer = stripe.Customer.retrieve(user.stripe_customer_id)
     assert customer['email'] == email
+
+
+def assert_customer_description(user, description: str):
+    customer = stripe.Customer.retrieve(user.stripe_customer_id)
+    assert customer['description'] == description

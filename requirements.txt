@@ -1,4 +1,5 @@
+wheel
 django
 djangorestframework
 stripe
-#stripe_subscriptions
+stripe_subscriptions @ git+git://github.com/primal100/stripe-subscriptions.git#egg=stripe_subscriptions

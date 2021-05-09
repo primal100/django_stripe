@@ -5,12 +5,23 @@ import subscriptions
 
 
 @pytest.mark.django_db
-def test_checkout(authenticated_client_with_without_customer_id, user, stripe_unsubscribed_price_id):
+def test_subscription_checkout(authenticated_client_with_without_customer_id, user, stripe_unsubscribed_price_id):
     response = make_request(authenticated_client_with_without_customer_id.post,
                             'checkout',
                             200,
                             signal=signals.checkout_created,
                             url_params={'price_id': stripe_unsubscribed_price_id})
+    assert list(response.data.keys()) == ['sessionId']
+    assert response.data['sessionId']
+    assert_customer_id_exists(user)
+
+
+@pytest.mark.django_db
+def test_setup_checkout(authenticated_client_with_without_customer_id, user, stripe_unsubscribed_price_id):
+    response = make_request(authenticated_client_with_without_customer_id.post,
+                            'setup-checkout',
+                            200,
+                            signal=signals.checkout_created)
     assert list(response.data.keys()) == ['sessionId']
     assert response.data['sessionId']
     assert_customer_id_exists(user)

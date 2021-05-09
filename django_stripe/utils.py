@@ -28,3 +28,7 @@ def get_actual_user(f):
         user = get_user_if_token_user(user)
         return f(user, *args, **kwargs)
     return wrapper
+
+
+def user_description(user) -> str:
+    return f'{user.first_name} {user.last_name}'
