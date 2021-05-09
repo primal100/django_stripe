@@ -5,6 +5,7 @@ from django.db import models
 from django.dispatch import Signal
 from django.urls import reverse_lazy
 import stripe
+from typing import Dict, Any
 
 
 signal_mock = mock.Mock()
@@ -29,8 +30,10 @@ def assert_signal_called(signal: Signal):
     assert kwargs['signal'] == signal
 
 
-def make_request(method: Callable, view: str, expected_status_code: int, signal: Signal = None, **kwargs):
-    response = method(reverse_lazy(view), data=kwargs)
+def make_request(method: Callable, view: str, expected_status_code: int, url_params: Dict[str, Any] = None,
+                 signal: Signal = None, **kwargs):
+    url = reverse_lazy(view, kwargs=url_params or {})
+    response = method(url, data=kwargs)
     assert_status_code_equals(response, expected_status_code)
     if signal:
         assert_signal_called(signal)

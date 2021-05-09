@@ -102,6 +102,13 @@ def test_product_list_unsubscribed(no_user_and_user_with_and_without_customer_id
 
 
 @pytest.mark.django_db
+def test_list_payment_intents(user_with_customer_id, stripe_price_id):
+    payment_intents = payments.list_payment_intents(user_with_customer_id)
+    assert payment_intents['data'] == []
+    #session = payments.create_checkout(user_with_customer_id, stripe_price_id)
+
+
+@pytest.mark.django_db
 def test_new_subscription(user_with_payment_method, stripe_price_id, stripe_subscription_product_id):
     payments.create_subscription(user_with_payment_method, stripe_price_id)
     response = subscriptions.is_subscribed_and_cancelled_time(user_with_payment_method, stripe_subscription_product_id)

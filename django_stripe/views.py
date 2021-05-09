@@ -1,20 +1,44 @@
 import stripe
+import logging
+from .forms import SubscriptionForm
+from django.contrib import messages
+from django.views.generic import FormView, TemplateView
+from django.contrib.auth.mixins import LoginRequiredMixin
 from stripe.error import StripeError
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from . import exceptions
 from .permissions import StripeCustomerIdRequiredOrReadOnly
 from subscriptions.types import Protocol
+from .conf import settings
 from . import serializers
 from . import payments
 from typing import Dict, Any, Type
 
 
+logger = logging.getLogger("django_stripe")
+
+
 class StripeViewMixin(Protocol):
-    serializer_class: Type = None
     throttle_scope = 'payments'
     status_code = status.HTTP_200_OK
+
+    def make_request(self, request, **data):
+        raise NotImplementedError
+
+    def run_stripe(self, request, **data):
+        try:
+            result = self.make_request(request, **data)
+        except stripe.error.StripeError as e:
+            logger.exception(e, exc_info=e)
+            raise exceptions.StripeException(detail=e)
+        return Response(result, status=self.status_code)
+
+
+class StripeViewWithSerializerMixin(StripeViewMixin, Protocol):
+    serializer_class: Type = None
 
     def get_serializer_class(self) -> Type:
         return self.serializer_class
@@ -30,69 +54,59 @@ class StripeViewMixin(Protocol):
         kwargs.setdefault('context', self.get_serializer_context())
         return serializer_class(*args,  **kwargs)
 
-    def make_request(self, request, **data):
-        raise NotImplementedError
-
-    def run(self, request):
+    def run_with_serializer(self, request, **kwargs):
         serializer = self.get_serializer(data=request.data or request.query_params)
         if serializer.is_valid():
             data = serializer.data
-            try:
-                result = self.make_request(request, **data)
-            except StripeError as e:
-                raise
-            return Response(result, status=self.status_code)
+            return self.run_stripe(request, **data, **kwargs)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class StripeCheckoutView(APIView, StripeViewMixin):
-    serializer_class = serializers.CheckoutSessionSerializer
     permission_classes = (IsAuthenticated,)
 
     def make_request(self, request, **data):
-        session = payments.create_checkout(request.user, data['price_id'])
+        session = payments.create_checkout(request.user, **data)
         return {'sessionId': session['id']}
 
-    def post(self, request):
-        return self.run(request)
+    def post(self, request, price_id: str):
+        return self.run_stripe(request, price_id=price_id)
 
 
-class StripeBillingPortalView(APIView):
+class StripeBillingPortalView(APIView, StripeViewMixin):
     permission_classes = (IsAuthenticated,)
     throttle_scope = "payments"
 
-    def make_request(self, request):
-        session = payments.create_billing_portal(request.user)
+    def make_request(self, request, **kwargs):
+        session = payments.create_billing_portal(request.user, **kwargs)
         return {'url': session['url']}
 
     def post(self, request):
-        result = self.make_request(request)
-        return Response(result)
+        return self.run_stripe(request)
 
 
-class StripePricesView(APIView, StripeViewMixin):
+class StripePricesView(APIView, StripeViewWithSerializerMixin):
     serializer_class = serializers.PriceSerializer
 
     def make_request(self, request, **data):
         return payments.get_subscription_prices(request.user, **data)
 
     def get(self, request):
-        return self.run(request)
+        return self.run_with_serializer(request)
 
 
-class StripeProductsView(APIView, StripeViewMixin):
+class StripeProductsView(APIView, StripeViewWithSerializerMixin):
     serializer_class = serializers.ProductSerializer
 
     def make_request(self, request, **data):
         return payments.get_subscription_products(request.user, **data)
 
     def get(self, request):
-        return self.run(request)
+        return self.run_with_serializer(request)
 
 
 class StripeSubscriptionView(APIView, StripeViewMixin):
     status_code = status.HTTP_201_CREATED
-    serializer_class = serializers.SubscriptionSerializer
     permission_classes = (StripeCustomerIdRequiredOrReadOnly,)
     response_keys = ['id', 'cancel_at', 'current_period_end', 'current_period_start', 'days_until_due',
                      'latest_invoice', 'start_date', 'status', 'trial_end', 'trial_start']
@@ -104,5 +118,45 @@ class StripeSubscriptionView(APIView, StripeViewMixin):
         subscription = payments.create_subscription(request.user, **data)
         return self.make_response(subscription)
 
-    def post(self, request):
-        return self.run(request)
+    def post(self, request, price_id: str):
+        return self.run_stripe(request, price_id=price_id)
+
+
+class SubscriptionFormView(LoginRequiredMixin, FormView):
+    template_name = 'django_stripe/subscription_form.html'
+    form_class = SubscriptionForm
+
+    def get(self, request, *args, **kwargs):
+        if request.user and request.user.is_authenticated:
+            payments.create_customer(request.user)
+        return super().get(request, *args, **kwargs)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['stripe_public_key'] = settings.STRIPE_PUBLIC_KEY
+        return context
+
+    def form_valid(self, form):
+        price_id = form.cleaned_data['price_id']
+        user = self.request.user
+        try:
+            sub = payments.create_subscription(user, price_id)
+            messages.success(self.request, f"Successfully subscribed to {sub['id']}")
+        except stripe.error.StripeError as e:
+            logger.exception(e, exc_info=e)
+            error = str(e)
+            request_id = exceptions.get_request_id_string(error)
+            detail = error.replace(request_id, "")
+            messages.error(self.request, detail)
+        return self.render_to_response(self.get_context_data(form=form))
+
+
+class CheckoutView(LoginRequiredMixin, TemplateView):
+    template_name = 'django_stripe/checkout.html'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        price_id = self.request.GET['price_id']
+        session = payments.create_checkout(self.request.user, price_id)
+        context.update({'sessionId': session['id'], 'stripe_public_key': settings.STRIPE_PUBLIC_KEY})
+        return context

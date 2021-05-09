@@ -24,6 +24,7 @@ def get_user_if_token_user(user: Any):
 def get_actual_user(f):
     @wraps(f)
     def wrapper(user, *args, **kwargs):
+        print(user)
         user = get_user_if_token_user(user)
         return f(user, *args, **kwargs)
     return wrapper

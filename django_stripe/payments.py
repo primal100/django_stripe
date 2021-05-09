@@ -1,7 +1,7 @@
 import stripe
 import subscriptions
 from functools import wraps
-from .settings import django_stripe_settings as settings
+from .conf import settings
 from rest_framework.exceptions import NotAuthenticated
 from . import signals
 from .utils import get_actual_user
@@ -23,7 +23,7 @@ def create_customer(user, **kwargs):
         raise NotAuthenticated('This stripe method requires a logged in user')
     if not user.stripe_customer_id:
         customer_kwargs = settings.STRIPE_NEW_CUSTOMER_GET_KWARGS(**kwargs)
-        customer = subscriptions.create_customer(user, **customer_kwargs)
+        customer = subscriptions.create_customer(user, description=str(user), **customer_kwargs)
         user.save(update_fields=('stripe_customer_id',))
         signals.new_customer.send(sender=user, customer=customer)
     return user
@@ -37,6 +37,14 @@ def modify_customer(user, **kwargs):
     return customer
 
 
+def create_subscription_checkout(user, price_id: str, **kwargs) -> stripe.checkout.Session:
+    return stripe.checkout.Session.create(
+        customer=user.stripe_customer_id,
+        mode="setup",
+        **kwargs
+    )
+
+
 @add_stripe_customer_if_not_existing
 def create_checkout(user: subscriptions.types.UserProtocol, price_id: str, **kwargs) -> stripe.checkout.Session:
     checkout_kwargs = {
@@ -48,7 +56,7 @@ def create_checkout(user: subscriptions.types.UserProtocol, price_id: str, **kwa
         'payment_method_types': settings.STRIPE_PAYMENT_METHOD_TYPES
     }
     checkout_kwargs.update(**kwargs)
-    session = subscriptions.create_subscription_checkout(**checkout_kwargs)
+    session = create_subscription_checkout(**checkout_kwargs)
     signals.checkout_created.send(sender=user, session=session)
     return session
 
@@ -65,7 +73,7 @@ def create_billing_portal(user) -> stripe.billing_portal.Session:
 
 
 @get_actual_user
-def get_subscription_products(user, ids: List[str], price_kwargs: Dict[str, Any] = None,
+def get_subscription_products(user, ids: List[str] = None, price_kwargs: Dict[str, Any] = None,
                               **kwargs) -> List[Dict[str, Any]]:
     return subscriptions.get_subscription_products_and_prices(user, ids=ids, price_kwargs=price_kwargs, **kwargs)
 
@@ -81,3 +89,10 @@ def create_subscription(user, price_id: str, **kwargs) -> stripe.Subscription:
     subscription = subscriptions.create_subscription(user, price_id, **kwargs)
     signals.subscription_created.send(sender=user, subscription=subscription)
     return subscription
+
+
+@get_actual_user
+@add_stripe_customer_if_not_existing
+def list_payment_intents(user, **kwargs) -> stripe.Subscription:
+    payment_intents = stripe.PaymentIntent.list(customer=user.stripe_customer_id, **kwargs)
+    return payment_intents

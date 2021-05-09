@@ -1,6 +1,7 @@
 from django.apps import AppConfig
 from django.conf import settings
 import stripe
+import os
 from . import __version__, app_name, url
 
 
@@ -9,7 +10,7 @@ class DjangoStripeConfig(AppConfig):
     name = 'django_stripe'
 
     def ready(self):
-        stripe.api_key = getattr(settings, 'STRIPE_API_KEY', None)
+        stripe.api_key = getattr(settings, 'STRIPE_API_KEY', os.environ.get('STRIPE_API_KEY', stripe.api_key))
         stripe_app_data = getattr(settings, "STRIPE_APP_DATA", {
             'name': app_name,
             'url': url,

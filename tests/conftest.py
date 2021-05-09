@@ -142,7 +142,7 @@ def api_client():
 @pytest.fixture
 def client_no_user_and_user_with_and_without_stripe_id(api_client, no_user_and_user_with_and_without_customer_id):
     if no_user_and_user_with_and_without_customer_id:
-        api_client.force_login(user_with_and_without_customer_id)
+        api_client.force_login(no_user_and_user_with_and_without_customer_id)
     return api_client
 
 
@@ -150,6 +150,12 @@ def client_no_user_and_user_with_and_without_stripe_id(api_client, no_user_and_u
 def client_no_user_and_without_stripe_id(api_client, no_user_or_user):
     if no_user_or_user:
         api_client.force_login(no_user_or_user)
+    return api_client
+
+
+@pytest.fixture
+def authenticated_client_with_customer_id(api_client, user_with_customer_id):
+    api_client.force_login(user_with_customer_id)
     return api_client
 
 
@@ -423,5 +429,26 @@ def non_existing_price_id() -> str:
 
 
 @pytest.fixture
+def non_existing_price_id_error(non_existing_price_id) -> Dict[str, str]:
+    return {'detail': f"No such price: '{non_existing_price_id}'"}
+
+
+@pytest.fixture
 def non_existing_product_id() -> str:
     return 'prod_JPrXuHkkBJ3ABC'
+
+
+@pytest.fixture
+def non_existing_product_id_error(non_existing_product_id) -> Dict[str, str]:
+    return {'detail': f"No such product: '{non_existing_product_id}'"}
+
+
+@pytest.fixture
+def non_existing_currency() -> str:
+    return 'ABC'
+
+
+@pytest.fixture
+def non_existing_currency_error(non_existing_currency) -> str:
+    return f"Invalid currency: {non_existing_currency.lower()}. Stripe currently supports these currencies:"
+
