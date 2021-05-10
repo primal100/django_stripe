@@ -128,7 +128,7 @@ def mock_customer_retrieve(monkeypatch):
 
 @pytest.fixture
 def disable_keep_customer_email_updated(settings):
-    settings.STRIPE_KEEP_CUSTOMER_EMAIL_UPDATED = False
+    settings.STRIPE_KEEP_CUSTOMER_DETAILS_UPDATED = False
 
 
 @pytest.fixture()

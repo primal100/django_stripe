@@ -2,7 +2,7 @@ import stripe
 import logging
 from .forms import SubscriptionForm
 from django.contrib import messages
-from django.views.generic import FormView, TemplateView
+from django.views.generic import FormView, RedirectView, TemplateView
 from django.contrib.auth.mixins import LoginRequiredMixin
 from stripe.error import StripeError
 from rest_framework import status
@@ -66,7 +66,7 @@ class StripePriceCheckoutView(APIView, StripeViewMixin):
     permission_classes = (IsAuthenticated,)
 
     @staticmethod
-    def make_checkout(self, request, **data):
+    def make_checkout(request, **data):
         return payments.create_subscription_checkout(request.user, **data)
 
     def make_request(self, request, **data):
@@ -77,11 +77,14 @@ class StripePriceCheckoutView(APIView, StripeViewMixin):
         return self.run_stripe(request, price_id=price_id)
 
 
-class StripeSetupCheckoutView(APIView, StripeViewMixin):
+class StripeSetupCheckoutView(StripePriceCheckoutView):
 
     @staticmethod
-    def make_checkout(self, request, **data):
+    def make_checkout(request, **data):
         return payments.create_setup_checkout(request.user, **data)
+
+    def post(self, request, **kwargs):
+        return self.run_stripe(request, **kwargs)
 
 
 class StripeBillingPortalView(APIView, StripeViewMixin):
@@ -163,7 +166,7 @@ class SubscriptionFormView(LoginRequiredMixin, FormView):
         return self.render_to_response(self.get_context_data(form=form))
 
 
-class GoToCheckoutSetupView(LoginRequiredMixin, TemplateView):
+class GoToSetupCheckoutView(LoginRequiredMixin, TemplateView):
     template_name = 'django_stripe/checkout.html'
 
     def make_checkout(self):
@@ -176,8 +179,15 @@ class GoToCheckoutSetupView(LoginRequiredMixin, TemplateView):
         return context
 
 
-class GoToCheckoutSubscriptionView(GoToCheckoutSetupView):
+class GoToCheckoutView(GoToSetupCheckoutView):
 
     def make_checkout(self):
         price_id = self.request.GET['price_id']
         return payments.create_subscription_checkout(self.request.user, price_id=price_id)
+
+
+class GoToBillingPortalView(LoginRequiredMixin, RedirectView):
+
+    def get_redirect_url(self, *args, **kwargs) -> str:
+        session = payments.create_billing_portal(self.request.user, **kwargs)
+        return session['url']

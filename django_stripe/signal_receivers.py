@@ -17,7 +17,7 @@ User = get_user_model()
 @receiver(post_save, sender=User)
 def modify_email_if_changed_receiver(instance, created: bool,
                                      update_fields: Optional[Tuple] = None, **kwargs):
-    if settings.STRIPE_KEEP_CUSTOMER_UPDATED and not created and instance.stripe_customer_id and (
+    if settings.STRIPE_KEEP_CUSTOMER_DETAILS_UPDATED and not created and instance.stripe_customer_id and (
             not update_fields or any(f in update_fields for f in ('email', 'first_name', 'last_name'))):
         customer = stripe.Customer.retrieve(instance.stripe_customer_id)
         modify_kwargs = {}

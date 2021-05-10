@@ -23,8 +23,8 @@ class Settings:
         return django_settings.STRIPE_PAYMENT_METHOD_TYPES
 
     @property
-    def STRIPE_KEEP_CUSTOMER_UPDATED(self) -> bool:
-        return getattr(django_settings, 'STRIPE_KEEP_CUSTOMER_UPDATED', True)
+    def STRIPE_KEEP_CUSTOMER_DETAILS_UPDATED(self) -> bool:
+        return getattr(django_settings, 'STRIPE_KEEP_CUSTOMER_DETAILS_UPDATED', True)
 
     @property
     def STRIPE_PUBLIC_KEY(self) -> str:
