@@ -166,27 +166,26 @@ def authenticated_client_with_without_customer_id(api_client, user_with_and_with
 
 
 @pytest.fixture
-def authenticated_client_with_payment_method(api_client, user_with_payment_method):
-    api_client.force_login(user_with_payment_method)
-    return api_client
-
-
-@pytest.fixture
 def authenticated_client_with_subscribed_user(api_client, subscribed_user):
     api_client.force_login(subscribed_user)
     return api_client
 
 
 @pytest.fixture
-def user_with_payment_method(user_with_customer_id):
-    subscriptions.tests.create_payment_method(user_with_customer_id)
-    return user_with_customer_id
+def payment_method_id(user_with_customer_id) -> str:
+    payment_method = subscriptions.tests.create_payment_method(user_with_customer_id)
+    return payment_method['id']
 
 
 @pytest.fixture
-def subscribed_user(user_with_payment_method, stripe_price_id):
-    subscriptions.create_subscription(user_with_payment_method, stripe_price_id)
-    return user_with_payment_method
+def non_existing_payment_method_id(user_with_customer_id) -> str:
+    return 'pm_1IpWttCz06et8Vuzx4IABCD'
+
+
+@pytest.fixture
+def subscribed_user(user_with_customer_id, stripe_price_id, payment_method_id):
+    subscriptions.create_subscription(user_with_customer_id, stripe_price_id)
+    return user_with_customer_id
 
 
 @pytest.fixture(scope="session")
@@ -431,6 +430,11 @@ def non_existing_price_id() -> str:
 @pytest.fixture
 def non_existing_price_id_error(non_existing_price_id) -> Dict[str, str]:
     return {'detail': f"No such price: '{non_existing_price_id}'"}
+
+
+@pytest.fixture
+def non_existing_payment_method_error(non_existing_payment_method_id) -> Dict[str, str]:
+    return {'detail': f"No such payment method: '{non_existing_payment_method_id}'"}
 
 
 @pytest.fixture

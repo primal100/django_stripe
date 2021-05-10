@@ -1,5 +1,6 @@
 import stripe
 import subscriptions
+from concurrent.futures import ThreadPoolExecutor
 from functools import wraps
 from .conf import settings
 from rest_framework.exceptions import NotAuthenticated
@@ -31,10 +32,17 @@ def create_customer(user, **kwargs):
 
 @get_actual_user
 @subscriptions.decorators.customer_id_required
-def modify_customer(user, **kwargs):
+def modify_customer(user, **kwargs) -> stripe.Customer:
     customer = stripe.Customer.modify(user.stripe_customer_id, **kwargs)
     signals.customer_modified.send(sender=user, customer=customer)
     return customer
+
+
+@get_actual_user
+@subscriptions.decorators.customer_id_required
+def modify_default_payment_method(user, default_payment_method: str) -> stripe.Customer:
+    return modify_customer(user.stripe_customer_id, invoice_settings={
+        'default_payment_method': default_payment_method})
 
 
 @add_stripe_customer_if_not_existing
@@ -99,4 +107,32 @@ def create_setup_intent(user, **kwargs) -> stripe.SetupIntent:
         'confirm': False,
         'usage': "off_session"}
     setup_intent_kwargs.update(kwargs)
-    return stripe.SetupIntent.create(**setup_intent_kwargs)
+    setup_intent = stripe.SetupIntent.create(**setup_intent_kwargs)
+    signals.setup_intent_created.send(sender=user, setup_intent=setup_intent)
+    return setup_intent
+
+
+@get_actual_user
+def list_payment_methods(user, type:str, **kwargs) -> List[stripe.PaymentMethod]:
+    if user.stripe_customer_id:
+        return stripe.PaymentMethod.list(customer=user.stripe_customer_id, type=type, **kwargs)
+    return []
+
+
+@get_actual_user
+def list_all_payment_methods(user, **kwargs) -> List[stripe.PaymentMethod]:
+    if len(settings.STRIPE_PAYMENT_METHOD_TYPES) < 2:
+        return list_payment_methods(user, settings.STRIPE_PAYMENT_METHOD_TYPES[0], **kwargs)
+    if user.stripe_customer_id:
+        payment_methods = []
+        fs = []
+        with ThreadPoolExecutor() as executor:
+            for payment_type in settings.STRIPE_PAYMENT_METHOD_TYPES:
+                fs.append(executor.submit(stripe.PaymentMethod.list,
+                                          customer=user.stripe_customer_id,
+                                          type=payment_type,
+                                          **kwargs))
+            for f in fs:
+                payment_methods += f.result()
+            return payment_methods
+    return []

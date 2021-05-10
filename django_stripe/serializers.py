@@ -9,3 +9,7 @@ class PriceSerializer(serializers.Serializer):
 class ProductSerializer(serializers.Serializer):
     ids = serializers.ListField(child=serializers.CharField(max_length=255), required=False)
 
+
+class SubscriptionSerializer(serializers.Serializer):
+    default_payment_method = serializers.CharField(max_length=255, required=False)
+

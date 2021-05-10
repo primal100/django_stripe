@@ -54,11 +54,11 @@ class StripeViewWithSerializerMixin(StripeViewMixin, Protocol):
         kwargs.setdefault('context', self.get_serializer_context())
         return serializer_class(*args,  **kwargs)
 
-    def run_with_serializer(self, request, **kwargs):
+    def run_stripe(self, request, **kwargs):
         serializer = self.get_serializer(data=request.data or request.query_params)
         if serializer.is_valid():
             data = serializer.data
-            return self.run_stripe(request, **data, **kwargs)
+            return super().run_stripe(request, **data, **kwargs)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -106,7 +106,7 @@ class StripePricesView(APIView, StripeViewWithSerializerMixin):
         return payments.get_subscription_prices(request.user, **data)
 
     def get(self, request):
-        return self.run_with_serializer(request)
+        return self.run_stripe(request)
 
 
 class StripeProductsView(APIView, StripeViewWithSerializerMixin):
@@ -116,11 +116,28 @@ class StripeProductsView(APIView, StripeViewWithSerializerMixin):
         return payments.get_subscription_products(request.user, **data)
 
     def get(self, request):
-        return self.run_with_serializer(request)
+        return self.run_stripe(request)
 
 
-class StripeSubscriptionView(APIView, StripeViewMixin):
+class StripeSetupIntentView(APIView, StripeViewMixin):
     status_code = status.HTTP_201_CREATED
+    permission_classes = (IsAuthenticated,)
+    response_keys = ['id', 'client_secret', 'payment_method_types']
+
+    def make_response(self, setup_intent: stripe.SetupIntent) -> Dict[str, Any]:
+        return {k: setup_intent[k] for k in self.response_keys}
+
+    def make_request(self, request, **data):
+        setup_intent = payments.create_setup_intent(request.user, **data)
+        return self.make_response(setup_intent)
+
+    def post(self, request):
+        return self.run_stripe(request)
+
+
+class StripeSubscriptionView(APIView, StripeViewWithSerializerMixin):
+    status_code = status.HTTP_201_CREATED
+    serializer_class = serializers.SubscriptionSerializer
     permission_classes = (StripeCustomerIdRequiredOrReadOnly,)
     response_keys = ['id', 'cancel_at', 'current_period_end', 'current_period_start', 'days_until_due',
                      'latest_invoice', 'start_date', 'status', 'trial_end', 'trial_start']
@@ -148,8 +165,6 @@ class SubscriptionFormView(LoginRequiredMixin, FormView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         setup_intent = payments.create_setup_intent(self.request.user)
-        print(setup_intent)
-        print(stripe.PaymentMethod.list(customer=self.request.user.stripe_customer_id, type="card"))
         context['js_vars'] = {
             'stripe_client_secret': setup_intent['client_secret'],
             'payment_method_types': setup_intent['payment_method_types'],
@@ -162,7 +177,6 @@ class SubscriptionFormView(LoginRequiredMixin, FormView):
     def form_valid(self, form):
         price_id = form.cleaned_data['price_id']
         user = self.request.user
-        print(stripe.PaymentMethod.list(customer=self.request.user.stripe_customer_id, type="card"))
         try:
             sub = payments.create_subscription(user, price_id)
             messages.success(self.request, f"Successfully subscribed to {sub['id']}")

@@ -129,9 +129,9 @@ def test_new_setup_intent(user_with_and_without_customer_id):
 
 
 @pytest.mark.django_db
-def test_new_subscription(user_with_payment_method, stripe_price_id, stripe_subscription_product_id):
-    payments.create_subscription(user_with_payment_method, stripe_price_id)
-    response = subscriptions.is_subscribed_and_cancelled_time(user_with_payment_method, stripe_subscription_product_id)
+def test_new_subscription(user_with_customer_id, payment_method_id, stripe_price_id, stripe_subscription_product_id):
+    payments.create_subscription(user_with_customer_id, stripe_price_id, default_payment_method=payment_method_id)
+    response = subscriptions.is_subscribed_and_cancelled_time(user_with_customer_id, stripe_subscription_product_id)
     assert response['subscribed'] is True
     assert response['cancel_at'] is None
 

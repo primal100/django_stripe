@@ -53,7 +53,8 @@ def test_billing_portal(authenticated_client_with_without_customer_id, user):
 @pytest.mark.parametrize('method,view,price_id_as_url_params', [
     ('post', 'checkout', True),
     ('post', 'billing', False),
-    ('post', 'subscriptions', True)
+    ('post', 'subscriptions', True),
+    ('post', 'setup-intents', False)
 ])
 def test_unauthenticated(api_client, method, view, price_id_as_url_params, stripe_price_id):
     method = getattr(api_client, method)
@@ -122,27 +123,48 @@ def test_price_list_non_existing_product(client, non_existing_product_id):
 
 
 @pytest.mark.django_db
-def test_new_subscription(authenticated_client_with_payment_method, stripe_price_id, stripe_subscription_product_id,
-                          user_with_payment_method, subscription_response):
-    response = make_request(authenticated_client_with_payment_method.post, "subscriptions", 201,
-                            signal=signals.subscription_created, url_params={'price_id': stripe_price_id})
+def test_new_setup_intent(authenticated_client_with_without_customer_id):
+    response = make_request(authenticated_client_with_without_customer_id.post, "setup-intents", 201,
+                            signal=signals.setup_intent_created)
+    data = response.data
+    assert data['id']
+    assert data['client_secret']
+    assert data['payment_method_types'] == ['card']
+
+
+@pytest.mark.django_db
+def test_new_subscription(authenticated_client_with_customer_id, stripe_price_id, stripe_subscription_product_id,
+                          payment_method_id, user_with_customer_id, subscription_response):
+    response = make_request(authenticated_client_with_customer_id.post, "subscriptions", 201,
+                            signal=signals.subscription_created, url_params={'price_id': stripe_price_id},
+                            default_payment_method=payment_method_id)
     assert response.data.pop('current_period_end')
     assert response.data.pop('current_period_start')
     assert response.data.pop('id')
     assert response.data.pop('latest_invoice')
     assert response.data.pop('start_date')
     assert response.data == subscription_response
-    response = subscriptions.is_subscribed_and_cancelled_time(user_with_payment_method, stripe_subscription_product_id)
+    response = subscriptions.is_subscribed_and_cancelled_time(user_with_customer_id, stripe_subscription_product_id)
     assert response['subscribed'] is True
     assert response['cancel_at'] is None
 
 
 @pytest.mark.django_db
-def test_new_subscription_no_price_id(authenticated_client_with_payment_method, non_existing_price_id, stripe_subscription_product_id,
-                                      user_with_payment_method, non_existing_price_id_error):
-    response = make_request(authenticated_client_with_payment_method.post, "subscriptions", 500,
-                            url_params={'price_id': non_existing_price_id})
+def test_new_subscription_no_price_id(authenticated_client_with_customer_id, non_existing_price_id,
+                                      stripe_subscription_product_id, payment_method_id, non_existing_price_id_error):
+    response = make_request(authenticated_client_with_customer_id.post, "subscriptions", 500,
+                            url_params={'price_id': non_existing_price_id}, default_payment_method=payment_method_id)
     assert response.data == non_existing_price_id_error
+
+
+@pytest.mark.django_db
+def test_new_subscription_no_payment_method(authenticated_client_with_payment_method, stripe_price_id,
+                                            stripe_subscription_product_id, non_existing_payment_method_id,
+                                            non_existing_payment_method_error):
+    response = make_request(authenticated_client_with_payment_method.post, "subscriptions", 500,
+                            url_params={'price_id': stripe_price_id},
+                            default_payment_method=non_existing_payment_method_id)
+    assert response.data == non_existing_payment_method_error
 
 
 @pytest.mark.django_db
