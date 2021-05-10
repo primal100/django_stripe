@@ -121,10 +121,11 @@ def test_product_list_unsubscribed(no_user_and_user_with_and_without_customer_id
 
 
 @pytest.mark.django_db
-def test_list_payment_intents(user_with_customer_id, stripe_price_id):
-    payment_intents = payments.list_payment_intents(user_with_customer_id)
-    assert payment_intents['data'] == []
-    #session = payments.create_checkout(user_with_customer_id, stripe_price_id)
+def test_new_setup_intent(user_with_and_without_customer_id):
+    setup_intent = payments.create_setup_intent(user_with_and_without_customer_id)
+    assert setup_intent['id'] is not None
+    assert setup_intent['client_secret'] is not None
+    assert setup_intent['payment_method_types'] == ['card']
 
 
 @pytest.mark.django_db

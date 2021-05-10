@@ -147,13 +147,22 @@ class SubscriptionFormView(LoginRequiredMixin, FormView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context['stripe_public_key'] = settings.STRIPE_PUBLIC_KEY
+        setup_intent = payments.create_setup_intent(self.request.user)
+        print(setup_intent)
+        print(stripe.PaymentMethod.list(customer=self.request.user.stripe_customer_id, type="card"))
+        context['js_vars'] = {
+            'stripe_client_secret': setup_intent['client_secret'],
+            'payment_method_types': setup_intent['payment_method_types'],
+            'hide_postal_code': settings.STRIPE_CREDIT_CARD_HIDE_POSTAL_CODE,
+            'stripe_public_key': settings.STRIPE_PUBLIC_KEY
+        }
         context['user'] = self.request.user
         return context
 
     def form_valid(self, form):
         price_id = form.cleaned_data['price_id']
         user = self.request.user
+        print(stripe.PaymentMethod.list(customer=self.request.user.stripe_customer_id, type="card"))
         try:
             sub = payments.create_subscription(user, price_id)
             messages.success(self.request, f"Successfully subscribed to {sub['id']}")

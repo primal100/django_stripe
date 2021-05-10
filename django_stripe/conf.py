@@ -27,6 +27,10 @@ class Settings:
         return getattr(django_settings, 'STRIPE_KEEP_CUSTOMER_DETAILS_UPDATED', True)
 
     @property
+    def STRIPE_CREDIT_CARD_HIDE_POSTAL_CODE(self) -> bool:
+        return getattr(django_settings, 'STRIPE_CREDIT_CARD_HIDE_POSTAL_CODE', False)
+
+    @property
     def STRIPE_PUBLIC_KEY(self) -> str:
         return getattr(django_settings, 'STRIPE_PUBLIC_KEY', os.environ.get('STRIPE_PUBLIC_KEY'))
 

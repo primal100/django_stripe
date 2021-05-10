@@ -92,6 +92,11 @@ def create_subscription(user, price_id: str, **kwargs) -> stripe.Subscription:
 
 @get_actual_user
 @add_stripe_customer_if_not_existing
-def list_payment_intents(user, **kwargs) -> stripe.Subscription:
-    payment_intents = stripe.PaymentIntent.list(customer=user.stripe_customer_id, **kwargs)
-    return payment_intents
+def create_setup_intent(user, **kwargs) -> stripe.SetupIntent:
+    setup_intent_kwargs = {
+        'customer': user.stripe_customer_id,
+        'payment_method_types': settings.STRIPE_PAYMENT_METHOD_TYPES,
+        'confirm': False,
+        'usage': "off_session"}
+    setup_intent_kwargs.update(kwargs)
+    return stripe.SetupIntent.create(**setup_intent_kwargs)
