@@ -3,6 +3,7 @@ import os
 import sys
 import pytest
 import stripe
+from stripe.error import InvalidRequestError
 from unittest import mock
 
 from django_stripe import payments, signals
@@ -59,30 +60,45 @@ def checkout_cancel_url() -> str:
     return "http://localhost/cancel"
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def user_email() -> str:
     return f'stripe-subscriptions-{ci_string}@example.com'
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def user_alternative_email() -> str:
     return f'stripe-subscriptions-alternative-{ci_string}@example.com'
 
 
 @pytest.fixture
 def user(user_email):
-    user = User(id=1, email=user_email, first_name='Test', last_name="User")
+    user = User(id=1, email=user_email, first_name='Test', last_name="User", username="test_user")
     user.save()
     yield user
-    if user.stripe_customer_id and stripe.Customer.retrieve(user.stripe_customer_id):
+    if user.stripe_customer_id:
+        try:
+            subscriptions.delete_customer(user)
+        except InvalidRequestError:
+            pass
+
+
+@pytest.fixture()
+def second_user(user_alternative_email):
+    user = User(id=2, email=user_alternative_email, first_name='Second', last_name="User", username="second_user")
+    user.save()
+    payments.create_customer(user)
+    yield user
+    try:
         subscriptions.delete_customer(user)
+    except InvalidRequestError:
+        pass
 
 
 def create_customer_id(user):
     customers = stripe.Customer.list(email=user.email)
     for customer in customers:
         stripe.Customer.delete(customer['id'])
-    payments.create_customer(user, description="stripe-subscriptions test runner user")
+    payments.create_customer(user)
     return user
 
 
@@ -160,6 +176,12 @@ def authenticated_client_with_customer_id(api_client, user_with_customer_id):
 
 
 @pytest.fixture
+def authenticated_client_second_user(api_client, second_user):
+    api_client.force_login(second_user)
+    return api_client
+
+
+@pytest.fixture
 def authenticated_client_with_without_customer_id(api_client, user_with_and_without_customer_id):
     api_client.force_login(user_with_and_without_customer_id)
     return api_client
@@ -172,9 +194,57 @@ def authenticated_client_with_subscribed_user(api_client, subscribed_user):
 
 
 @pytest.fixture
-def payment_method_id(user_with_customer_id) -> str:
-    payment_method = subscriptions.tests.create_payment_method(user_with_customer_id)
+def payment_method(user_with_customer_id) -> stripe.PaymentMethod:
+    payment_method = subscriptions.tests.create_payment_method_for_customer(user_with_customer_id)
+    return payment_method
+
+
+@pytest.fixture
+def payment_method_id(payment_method) -> str:
     return payment_method['id']
+
+
+@pytest.fixture
+def payment_method_saved(user_with_customer_id, payment_method) -> stripe.PaymentMethod:
+    payment_method['customer'] = user_with_customer_id.stripe_customer_id
+    payment_method['card']['checks']['cvc_check'] = "pass"
+    return payment_method
+
+
+payment_method_api_keys = ["billing_details", "card", "created", "id", "type"]
+
+
+def get_payment_method_from_api(payment_method: stripe.PaymentMethod, default: bool) -> Dict[str, Any]:
+    pm = {k: payment_method[k] for k in payment_method_api_keys}
+    pm["default"] = default
+    return pm
+
+
+@pytest.fixture
+def payment_method_from_api(payment_method_saved) -> Dict[str, Any]:
+    return get_payment_method_from_api(payment_method_saved, False)
+
+
+@pytest.fixture
+def default_payment_method_for_customer(user_with_customer_id) -> stripe.PaymentMethod:
+    return subscriptions.tests.create_default_payment_method_for_customer(user_with_customer_id)
+
+
+@pytest.fixture
+def default_payment_method_id(default_payment_method_for_customer) -> str:
+    return default_payment_method_for_customer['id']
+
+
+@pytest.fixture
+def default_payment_method_saved(user_with_customer_id, default_payment_method_for_customer) -> stripe.PaymentMethod:
+    default_payment_method_for_customer['customer'] = user_with_customer_id.stripe_customer_id
+    default_payment_method_for_customer['card']['checks']['cvc_check'] = "pass"
+    return default_payment_method_for_customer
+
+
+@pytest.fixture
+def default_payment_method_from_api(default_payment_method_saved) -> Dict[str, Any]:
+    return get_payment_method_from_api(default_payment_method_saved, True)
 
 
 @pytest.fixture
@@ -183,7 +253,7 @@ def non_existing_payment_method_id(user_with_customer_id) -> str:
 
 
 @pytest.fixture
-def subscribed_user(user_with_customer_id, stripe_price_id, payment_method_id):
+def subscribed_user(user_with_customer_id, stripe_price_id, default_payment_method_id):
     subscriptions.create_subscription(user_with_customer_id, stripe_price_id)
     return user_with_customer_id
 
@@ -435,6 +505,20 @@ def non_existing_price_id_error(non_existing_price_id) -> Dict[str, str]:
 @pytest.fixture
 def non_existing_payment_method_error(non_existing_payment_method_id) -> Dict[str, str]:
     return {'detail': f"No such payment method: '{non_existing_payment_method_id}'"}
+
+
+def get_payment_method_error(payment_method_id) -> Dict[str, str]:
+    return {'detail': f"No such PaymentMethod: '{payment_method_id}'"}
+
+
+@pytest.fixture
+def non_existing_payment_method_error_2(non_existing_payment_method_id) -> Dict[str, str]:
+    return get_payment_method_error(non_existing_payment_method_id)
+
+
+@pytest.fixture
+def non_existing_payment_method_error_other_user(default_payment_method_id) -> Dict[str, str]:
+    return get_payment_method_error(default_payment_method_id)
 
 
 @pytest.fixture

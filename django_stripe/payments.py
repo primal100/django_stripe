@@ -1,12 +1,12 @@
 import stripe
 import subscriptions
-from concurrent.futures import ThreadPoolExecutor
+from subscriptions.types import PaymentMethodType
 from functools import wraps
 from .conf import settings
 from rest_framework.exceptions import NotAuthenticated
 from . import signals
 from .utils import get_actual_user, user_description
-from typing import List, Dict, Any, Callable
+from typing import List, Dict, Any, Callable, Generator
 
 
 def add_stripe_customer_if_not_existing(f):
@@ -40,9 +40,9 @@ def modify_customer(user, **kwargs) -> stripe.Customer:
 
 @get_actual_user
 @subscriptions.decorators.customer_id_required
-def modify_default_payment_method(user, default_payment_method: str) -> stripe.Customer:
-    return modify_customer(user.stripe_customer_id, invoice_settings={
-        'default_payment_method': default_payment_method})
+def modify_default_payment_method(user, payment_method_id: str) -> stripe.Customer:
+    return modify_customer(user, invoice_settings={
+        'default_payment_method': payment_method_id})
 
 
 @add_stripe_customer_if_not_existing
@@ -113,26 +113,22 @@ def create_setup_intent(user, **kwargs) -> stripe.SetupIntent:
 
 
 @get_actual_user
-def list_payment_methods(user, type:str, **kwargs) -> List[stripe.PaymentMethod]:
-    if user.stripe_customer_id:
-        return stripe.PaymentMethod.list(customer=user.stripe_customer_id, type=type, **kwargs)
-    return []
+def list_payment_methods(user, types: List[PaymentMethodType] = None, **kwargs) -> Generator[stripe.PaymentMethod, None, None]:
+    types = types or settings.STRIPE_PAYMENT_METHOD_TYPES
+    return subscriptions.list_payment_methods(user, types, **kwargs)
 
 
 @get_actual_user
-def list_all_payment_methods(user, **kwargs) -> List[stripe.PaymentMethod]:
-    if len(settings.STRIPE_PAYMENT_METHOD_TYPES) < 2:
-        return list_payment_methods(user, settings.STRIPE_PAYMENT_METHOD_TYPES[0], **kwargs)
-    if user.stripe_customer_id:
-        payment_methods = []
-        fs = []
-        with ThreadPoolExecutor() as executor:
-            for payment_type in settings.STRIPE_PAYMENT_METHOD_TYPES:
-                fs.append(executor.submit(stripe.PaymentMethod.list,
-                                          customer=user.stripe_customer_id,
-                                          type=payment_type,
-                                          **kwargs))
-            for f in fs:
-                payment_methods += f.result()
-            return payment_methods
-    return []
+def detach_payment_method(user, payment_method_id: str) -> stripe.PaymentMethod:
+    payment_method = subscriptions.detach_payment_method(user, payment_method_id)
+    signals.payment_method_detached.send(sender=user, payment_method=payment_method)
+    return payment_method
+
+
+@get_actual_user
+def detach_all_payment_methods(user, types: List[PaymentMethodType] = None, **kwargs) -> int:
+    types = types or settings.STRIPE_PAYMENT_METHOD_TYPES
+    num_detached = subscriptions.detach_all_payment_methods(user, types, **kwargs)
+    if num_detached:
+        signals.payment_method_detached.send(sender=user)
+    return num_detached

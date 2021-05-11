@@ -32,8 +32,8 @@ def assert_signal_called(signal: Signal):
 
 def make_request(method: Callable, view: str, expected_status_code: int, url_params: Dict[str, Any] = None,
                  signal: Signal = None, **kwargs):
-    url = reverse_lazy(view, kwargs=url_params or {})
-    response = method(url, data=kwargs)
+    url = reverse_lazy(view, kwargs=url_params or None)
+    response = method(url, data=kwargs or None)
     assert_status_code_equals(response, expected_status_code)
     if signal:
         assert_signal_called(signal)

@@ -20,7 +20,7 @@ class Settings:
 
     @property
     def STRIPE_PAYMENT_METHOD_TYPES(self) -> List[str]:
-        return django_settings.STRIPE_PAYMENT_METHOD_TYPES
+        return getattr(django_settings, "STRIPE_PAYMENT_METHOD_TYPES", ["card"])
 
     @property
     def STRIPE_KEEP_CUSTOMER_DETAILS_UPDATED(self) -> bool:

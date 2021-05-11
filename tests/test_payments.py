@@ -129,6 +129,39 @@ def test_new_setup_intent(user_with_and_without_customer_id):
 
 
 @pytest.mark.django_db
+def test_modify_default_payment_method(user_with_customer_id, payment_method_id):
+    customer = stripe.Customer.retrieve(user_with_customer_id.stripe_customer_id)
+    assert customer['invoice_settings']['default_payment_method'] is None
+    payments.modify_default_payment_method(user_with_customer_id, payment_method_id)
+    customer = stripe.Customer.retrieve(user_with_customer_id.stripe_customer_id)
+    assert customer['invoice_settings']['default_payment_method'] == payment_method_id
+
+
+@pytest.mark.django_db
+def test_list_payment_methods(user_with_customer_id, default_payment_method_saved, payment_method_saved):
+    payment_methods = list(payments.list_payment_methods(user_with_customer_id))
+    default_payment_method_saved['default'] = True
+    payment_method_saved['default'] = False
+    print(default_payment_method_saved)
+    assert payment_methods == [payment_method_saved, default_payment_method_saved]
+
+
+@pytest.mark.django_db
+def test_detach_payment_method(user_with_customer_id, default_payment_method_saved):
+    payment_method = payments.detach_payment_method(user_with_customer_id, default_payment_method_saved['id'])
+    assert not payment_method['customer']
+    assert list(payments.list_payment_methods(user_with_customer_id)) == []
+
+
+@pytest.mark.django_db
+def test_detach_all_payment_methods(user_with_customer_id, default_payment_method_saved):
+    num = payments.detach_all_payment_methods(user_with_customer_id, types=["card"])
+    assert num == 1
+    payment_method = stripe.PaymentMethod.retrieve(default_payment_method_saved["id"])
+    assert payment_method["customer"] is None
+
+
+@pytest.mark.django_db
 def test_new_subscription(user_with_customer_id, payment_method_id, stripe_price_id, stripe_subscription_product_id):
     payments.create_subscription(user_with_customer_id, stripe_price_id, default_payment_method=payment_method_id)
     response = subscriptions.is_subscribed_and_cancelled_time(user_with_customer_id, stripe_subscription_product_id)
@@ -168,9 +201,4 @@ def test_view_subscribed_permission():
 
 @pytest.mark.django_db
 def test_view_not_subscribed_permission():
-    pass
-
-
-@pytest.mark.django_db
-def test_user_change_email():
     pass

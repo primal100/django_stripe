@@ -3,7 +3,10 @@ from rest_framework import exceptions
 
 
 def get_request_id_string(error_msg: str) -> str:
-    return re.search('^Request req_.+?: ', error_msg)[0]
+    try:
+        return re.search('^Request req_.+?: ', error_msg)[0]
+    except TypeError:
+        return ''
 
 
 class StripeException(exceptions.APIException):

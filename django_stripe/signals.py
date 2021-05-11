@@ -7,6 +7,7 @@ checkout_created = django.dispatch.Signal()
 billing_portal_created = django.dispatch.Signal()
 setup_intent_created = django.dispatch.Signal()
 subscription_created = django.dispatch.Signal()
+payment_method_detached = django.dispatch.Signal()
 
 
 all_signals = [new_customer,
@@ -14,4 +15,5 @@ all_signals = [new_customer,
                checkout_created,
                billing_portal_created,
                setup_intent_created,
-               subscription_created]
+               subscription_created,
+               payment_method_detached]
