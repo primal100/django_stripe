@@ -7,7 +7,6 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from operator import itemgetter
 from stripe.error import StripeError
 from rest_framework import status
-from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -263,7 +262,8 @@ class GoToSetupCheckoutView(LoginRequiredMixin, TemplateView):
     template_name = 'django_stripe/checkout.html'
 
     def make_checkout(self):
-        return payments.create_setup_checkout(self.request.user)
+        subscription_id = self.kwargs.get('subscription_id')
+        return payments.create_setup_checkout(self.request.user, subscription_id=subscription_id)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -274,8 +274,8 @@ class GoToSetupCheckoutView(LoginRequiredMixin, TemplateView):
 
 class GoToCheckoutView(GoToSetupCheckoutView):
 
-    def make_checkout(self):
-        price_id = self.request.GET['price_id']
+    def make_checkout(self, price_id: str = None):
+        price_id = self.kwargs['price_id']
         return payments.create_subscription_checkout(self.request.user, price_id=price_id)
 
 

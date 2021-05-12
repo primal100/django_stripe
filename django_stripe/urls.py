@@ -7,7 +7,7 @@ from .views import (
 
 urlpatterns = [
     url(r'^checkout/(?P<price_id>.*)', StripePriceCheckoutView.as_view(), name="checkout"),
-    url(r'^setup-checkout/', StripeSetupCheckoutView.as_view(), name="setup-checkout"),
+    url(r'^setup-checkout/(?:/(?P<subscription_id>.*)/)?', StripeSetupCheckoutView.as_view(), name="setup-checkout"),
     url(r'^billing', StripeBillingPortalView.as_view(), name="billing"),
     url(r'^prices', StripePricesView.as_view(), name="prices"),
     url(r'^products', StripeProductsView.as_view(), name="products"),

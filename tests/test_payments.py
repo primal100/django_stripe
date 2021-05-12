@@ -88,8 +88,9 @@ def test_billing_portal(user_with_and_without_customer_id):
 
 
 @pytest.mark.django_db
-def test_price_list_subscribed(subscribed_user, stripe_subscription_product_id, expected_subscription_prices):
-    result = payments.get_subscription_prices(subscribed_user, product=stripe_subscription_product_id)
+def test_price_list_subscribed(user_with_customer_id, stripe_subscription_product_id,
+                               expected_subscription_prices, subscription):
+    result = payments.get_subscription_prices(user_with_customer_id, product=stripe_subscription_product_id)
     assert result == expected_subscription_prices
 
 
@@ -102,10 +103,10 @@ def test_price_list_unsubscribed(no_user_and_user_with_and_without_customer_id, 
 
 
 @pytest.mark.django_db
-def test_product_list_subscribed(subscribed_user, stripe_subscription_product_id, stripe_unsubscribed_product_id,
-                                 expected_subscription_products_and_prices):
-    result = payments.get_subscription_products(subscribed_user, ids=[stripe_subscription_product_id,
-                                                                      stripe_unsubscribed_product_id])
+def test_product_list_subscribed(user_with_customer_id, stripe_subscription_product_id, stripe_unsubscribed_product_id,
+                                 expected_subscription_products_and_prices, subscription):
+    result = payments.get_subscription_products(user_with_customer_id, ids=[stripe_subscription_product_id,
+                                                                            stripe_unsubscribed_product_id])
     assert result == expected_subscription_products_and_prices
 
 

@@ -2,16 +2,23 @@ import os
 
 import sys
 import pytest
+from pytest_django.live_server_helper import LiveServer
 import stripe
 from stripe.error import InvalidRequestError
 from unittest import mock
 
+from urllib.parse import urljoin
+from django.dispatch import Signal
 from django_stripe import payments, signals
-from django_stripe.tests import signal_mock
+from django_stripe.tests import signal_mock, get_url
+from seleniumlogin import force_login
 import subscriptions
+from selenium.webdriver.remote.webdriver import WebDriver
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 from tests.django_stripe_testapp.models import User
 
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 python_version = sys.version_info
 ci_string = f'{os.name}-{python_version.major}{python_version.minor}'
@@ -19,6 +26,7 @@ ci_string = f'{os.name}-{python_version.major}{python_version.minor}'
 
 def pytest_addoption(parser):
     parser.addoption("--apikey", action="store", default=os.environ.get('STRIPE_TEST_SECRET_KEY'))
+    parser.addoption("--publickey", action="store", default=os.environ.get('STRIPE_TEST_PUBLIC_KEY'))
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -27,9 +35,15 @@ def stripe_api_key(pytestconfig):
     return stripe_api_key
 
 
+@pytest.fixture(scope="session", autouse=True)
+def stripe_public_key(pytestconfig):
+    return pytestconfig.getoption("publickey")
+
+
 @pytest.fixture(autouse=True)
-def setup_settings(stripe_api_key, settings):
+def setup_settings(stripe_api_key, stripe_public_key, settings):
     settings.STRIPE_API_KEY = stripe_api_key
+    settings.STRIPE_PUBLIC_KEY = stripe_public_key
 
 
 @pytest.fixture(autouse=True)
@@ -170,6 +184,12 @@ def client_no_user_and_without_stripe_id(api_client, no_user_or_user):
 
 
 @pytest.fixture
+def authenticated_client(api_client, user_with_customer_id):
+    api_client.force_login(user_with_customer_id)
+    return api_client
+
+
+@pytest.fixture
 def authenticated_client_with_customer_id(api_client, user_with_customer_id):
     api_client.force_login(user_with_customer_id)
     return api_client
@@ -184,12 +204,6 @@ def authenticated_client_second_user(api_client, second_user):
 @pytest.fixture
 def authenticated_client_with_without_customer_id(api_client, user_with_and_without_customer_id):
     api_client.force_login(user_with_and_without_customer_id)
-    return api_client
-
-
-@pytest.fixture
-def authenticated_client_with_subscribed_user(api_client, subscribed_user):
-    api_client.force_login(subscribed_user)
     return api_client
 
 
@@ -253,9 +267,8 @@ def non_existing_payment_method_id(user_with_customer_id) -> str:
 
 
 @pytest.fixture
-def subscribed_user(user_with_customer_id, stripe_price_id, default_payment_method_id):
-    subscriptions.create_subscription(user_with_customer_id, stripe_price_id)
-    return user_with_customer_id
+def subscription(user_with_customer_id, stripe_price_id, default_payment_method_id) -> stripe.Subscription:
+    return subscriptions.create_subscription(user_with_customer_id, stripe_price_id)
 
 
 @pytest.fixture(scope="session")
@@ -342,7 +355,6 @@ def expected_subscription_prices(stripe_subscription_product_id, stripe_price_id
          'metadata': {},
          'product': stripe_subscription_product_id,
          'subscription_info': {'subscribed': True, 'cancel_at': None}}]
-
 
 
 @pytest.fixture
@@ -486,9 +498,9 @@ def subscription_response() -> Dict[str, Any]:
     """current_period_end, current_period_start, id, latest_invoice and start_date
     have been removed as they are not consistent values"""
     return {'cancel_at': None,
-             'days_until_due': None,
-             'status': 'active',
-             'trial_end': None,
+            'days_until_due': None,
+            'status': 'active',
+            'trial_end': None,
             'trial_start': None}
 
 
@@ -540,3 +552,87 @@ def non_existing_currency() -> str:
 def non_existing_currency_error(non_existing_currency) -> str:
     return f"Invalid currency: {non_existing_currency.lower()}. Stripe currently supports these currencies:"
 
+
+def get_data_from_signal(signal: Signal) -> Dict[str, Any]:
+    data_holder = {}
+
+    def receiver(**kwargs):
+        data_holder.update(kwargs)
+
+    signal.connect(receiver)
+
+    yield data_holder
+
+
+@pytest.fixture
+def checkout_session_data() -> Dict[str, Any]:
+    yield from get_data_from_signal(signals.checkout_created)
+
+
+@pytest.fixture
+def billing_portal_data() -> Dict[str, Any]:
+    yield from get_data_from_signal(signals.billing_portal_created)
+
+
+@pytest.fixture
+def url_params(request, stripe_unsubscribed_price_id, subscription) -> Optional[Dict[str, str]]:
+    if request.param == 'price_id':
+        return {'price_id': stripe_unsubscribed_price_id}
+    if request.param == 'subscription_id':
+        return {'subscription_id': subscription['id']}
+    return None
+
+
+@pytest.fixture
+def selenium(selenium: WebDriver, live_server: LiveServer) -> WebDriver:
+    selenium.maximize_window()
+    return selenium
+
+
+def get_full_url(base_url: str, view: str, **url_params: Dict[str, Any]) -> str:
+    return urljoin(base_url, str(get_url(view, **url_params)))
+
+
+def selenium_go_to_view(selenium: WebDriver, live_server: LiveServer, view: str,
+                        **kwargs: Dict[str, Any]) -> WebDriver:
+    url = get_full_url(live_server.url, view, **kwargs)
+    selenium.get(url)
+    return selenium
+
+
+def selenium_go_to_view_wait_stripe(selenium: WebDriver, live_server: LiveServer, view: str,
+                                    **kwargs) -> WebDriver:
+    selenium = selenium_go_to_view(selenium, live_server, view, **kwargs)
+    wait = WebDriverWait(selenium, 10)
+    wait.until(EC.url_contains("stripe.com"))
+    return selenium
+
+
+@pytest.fixture
+def selenium_authenticated(selenium: WebDriver, live_server: LiveServer, user) -> WebDriver:
+    force_login(user, selenium, live_server.url)
+    return selenium
+
+
+@pytest.fixture
+def selenium_go_to_checkout(selenium_authenticated: WebDriver, live_server: LiveServer,
+                            stripe_price_id: str) -> WebDriver:
+    return selenium_go_to_view_wait_stripe(
+        selenium_authenticated, live_server, "go-to-checkout", price_id=stripe_price_id)
+
+
+@pytest.fixture
+def selenium_go_to_setup_checkout(selenium_authenticated: WebDriver, live_server: LiveServer) -> WebDriver:
+    return selenium_go_to_view_wait_stripe(selenium_authenticated, live_server, "go-to-setup-checkout")
+
+
+@pytest.fixture
+def selenium_go_to_setup_checkout_subscription(selenium_authenticated: WebDriver, live_server: LiveServer,
+                                               subscription: stripe.Subscription) -> WebDriver:
+    return selenium_go_to_view_wait_stripe(selenium_authenticated,
+                                           live_server, "go-to-setup-checkout", subscription_id=subscription["id"])
+
+
+@pytest.fixture
+def selenium_go_to_billing_portal(selenium_authenticated: WebDriver, live_server: LiveServer) -> WebDriver:
+    return selenium_go_to_view_wait_stripe(selenium_authenticated, live_server, "go-to-billing-portal")

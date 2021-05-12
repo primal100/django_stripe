@@ -76,9 +76,9 @@ def test_price_list(client_no_user_and_user_with_and_without_stripe_id, expected
 
 
 @pytest.mark.django_db
-def test_price_list_subscribed(authenticated_client_with_subscribed_user, expected_subscription_prices,
-                               stripe_subscription_product_id):
-    response = make_request(authenticated_client_with_subscribed_user.get, 'prices', 200,
+def test_price_list_subscribed(authenticated_client_with_customer_id, expected_subscription_prices,
+                               stripe_subscription_product_id, subscription):
+    response = make_request(authenticated_client_with_customer_id.get, 'prices', 200,
                             product=stripe_subscription_product_id)
     assert response.data == expected_subscription_prices
 
@@ -107,9 +107,10 @@ def test_product_list(client_no_user_and_user_with_and_without_stripe_id, expect
 
 
 @pytest.mark.django_db
-def test_product_list_subscribed(authenticated_client_with_subscribed_user, expected_subscription_products_and_prices,
-                                 stripe_subscription_product_id, stripe_unsubscribed_product_id):
-    response = make_request(authenticated_client_with_subscribed_user.get, 'products', 200,
+def test_product_list_subscribed(authenticated_client_with_customer_id, expected_subscription_products_and_prices,
+                                 stripe_subscription_product_id, stripe_unsubscribed_product_id,
+                                 subscription):
+    response = make_request(authenticated_client_with_customer_id.get, 'products', 200,
                             ids=[stripe_subscription_product_id,
                                  stripe_unsubscribed_product_id])
     assert response.data == expected_subscription_products_and_prices

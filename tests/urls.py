@@ -16,13 +16,14 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 from django.conf.urls import url
-from django_stripe.views import SubscriptionFormView, GoToSetupCheckoutView, GoToCheckoutView
+from django_stripe.views import SubscriptionFormView, GoToSetupCheckoutView, GoToCheckoutView, GoToBillingPortalView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include("django_stripe.urls")),
     url(r'^api-auth/', include('rest_framework.urls')),
-    url(r'^checkout/', GoToSetupCheckoutView.as_view(), name='go-to-setup-checkout'),
-    url(r'^setup-checkout/', GoToCheckoutView.as_view(), name='go-to-checkout'),
+    url('^checkout/(?P<price_id>.*)/', GoToCheckoutView.as_view(), name='go-to-checkout'),
+    url(r'^setup-checkout/(?:/(?P<subscription_id>.*)/)?', GoToSetupCheckoutView.as_view(), name='go-to-setup-checkout'),
+    url(r'^billing-portal/', GoToBillingPortalView.as_view(), name='go-to-billing-portal'),
     url(r'^subscription-form', SubscriptionFormView.as_view(), name="subscription-form"),
 ]
