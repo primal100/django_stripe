@@ -91,14 +91,6 @@ def get_subscription_prices(user, product: str = None, currency: str = None, **k
 
 
 @get_actual_user
-@subscriptions.decorators.customer_id_required
-def create_subscription(user, price_id: str, **kwargs) -> stripe.Subscription:
-    subscription = subscriptions.create_subscription(user, price_id, **kwargs)
-    signals.subscription_created.send(sender=user, subscription=subscription)
-    return subscription
-
-
-@get_actual_user
 @add_stripe_customer_if_not_existing
 def create_setup_intent(user, **kwargs) -> stripe.SetupIntent:
     setup_intent_kwargs = {
@@ -121,14 +113,41 @@ def list_payment_methods(user, types: List[PaymentMethodType] = None, **kwargs) 
 @get_actual_user
 def detach_payment_method(user, payment_method_id: str) -> stripe.PaymentMethod:
     payment_method = subscriptions.detach_payment_method(user, payment_method_id)
-    signals.payment_method_detached.send(sender=user, payment_method=payment_method)
+    signals.payment_method_detached.send(sender=user, payment_methods=[payment_method])
     return payment_method
 
 
 @get_actual_user
-def detach_all_payment_methods(user, types: List[PaymentMethodType] = None, **kwargs) -> int:
+def detach_all_payment_methods(user, types: List[PaymentMethodType] = None, **kwargs) -> List[stripe.PaymentMethod]:
     types = types or settings.STRIPE_PAYMENT_METHOD_TYPES
-    num_detached = subscriptions.detach_all_payment_methods(user, types, **kwargs)
-    if num_detached:
-        signals.payment_method_detached.send(sender=user)
-    return num_detached
+    payment_methods = subscriptions.detach_all_payment_methods(user, types, **kwargs)
+    if payment_methods:
+        signals.payment_method_detached.send(sender=user, payment_methods=payment_methods)
+    return payment_methods
+
+
+@get_actual_user
+@subscriptions.decorators.customer_id_required
+def create_subscription(user, price_id: str,
+                        set_as_default_payment_method: bool = False, **kwargs) -> stripe.Subscription:
+    subscription = subscriptions.create_subscription(user, price_id,
+                                                     set_as_default_payment_method=set_as_default_payment_method, **kwargs)
+    signals.subscription_created.send(sender=user, subscription=subscription)
+    return subscription
+
+
+@get_actual_user
+def list_subscriptions(user, **kwargs) -> List[stripe.Subscription]:
+    return subscriptions.list_subscriptions(user, **kwargs)
+
+
+@get_actual_user
+@subscriptions.decorators.customer_id_required
+def cancel_subscription(user, sub_id: str) -> stripe.Subscription:
+    return subscriptions.cancel_subscription(user, sub_id)
+
+
+@get_actual_user
+@subscriptions.decorators.customer_id_required
+def modify_subscription(user, subscription_id: str, **kwargs) -> stripe.Subscription:
+    return subscriptions.modify_subscription(user, subscription_id, **kwargs)

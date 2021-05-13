@@ -1,5 +1,6 @@
 import stripe
 import logging
+
 from .forms import SubscriptionForm
 from django.contrib import messages
 from django.views.generic import FormView, RedirectView, TemplateView
@@ -18,7 +19,7 @@ from subscriptions.types import Protocol
 from .conf import settings
 from . import serializers
 from . import payments
-from typing import Dict, Any, Callable, List, Type, Union
+from typing import Dict, Any, Callable, List, Optional, Type, Union
 
 
 DataType = Union[Dict[str, Any], List[Any]]
@@ -64,13 +65,17 @@ class StripeViewWithSerializerMixin(StripeViewMixin, Protocol):
 
     def get_serializer(self, *args, **kwargs):
         serializer_class = self.get_serializer_class()
-        kwargs.setdefault('context', self.get_serializer_context())
-        return serializer_class(*args,  **kwargs)
+        if serializer_class:
+            kwargs.setdefault('context', self.get_serializer_context())
+            return serializer_class(*args,  **kwargs)
+        return None
 
     def run_stripe_response(self, request: Request, method: Callable = None,
                             status_code: int = None, **kwargs) -> Response:
         serializer = self.get_serializer(data=request.data or request.query_params)
-        if serializer.is_valid():
+        if not serializer:
+            result = self.run_stripe(request, method=method, **kwargs)
+        elif serializer.is_valid():
             data = serializer.data
             result = self.run_stripe(request, method=method, **data, **kwargs)
         else:
@@ -203,23 +208,55 @@ class StripePaymentMethodView(APIView, StripeViewMixin):
 
 class StripeSubscriptionView(APIView, StripeViewWithSerializerMixin):
     status_code = status.HTTP_201_CREATED
-    serializer_class = serializers.SubscriptionSerializer
+    list_serializer_class = serializers.SubscriptionListSerializer
+    update_serializer_class = serializers.SubscriptionSerializer
+    create_serializer_class = serializers.SubscriptionSerializer
     permission_classes = (StripeCustomerIdRequiredOrReadOnly,)
     response_keys = ['id', 'cancel_at', 'current_period_end', 'current_period_start', 'days_until_due',
                      'latest_invoice', 'start_date', 'status', 'trial_end', 'trial_start']
 
+    def get_serializer_class(self) -> Optional[Type]:
+        if self.request.method == 'GET':
+            return self.list_serializer_class
+        if self.request.method == 'POST':
+            return self.create_serializer_class
+        if self.request.method == 'PUT':
+            return self.create_serializer_class
+        return None
+
     def make_response(self, subscription: stripe.Subscription) -> Dict[str, Any]:
         return {k: subscription[k] for k in self.response_keys}
 
-    def make_request(self, request, **data) -> Dict[str, Any]:
-        set_as_customer_default_payment_method = data.pop('set_as_customer_default_payment_method', False)
+    def make_request(self, request: Request, **data) -> List[Dict[str, Any]]:
+        subs = payments.list_subscriptions(request.user, **data)
+        return sorted(
+            [self.make_response(sub) for sub in subs],
+            key=itemgetter('created'), reverse=True
+        )
+
+    def _create_subscription(self, request, **data) -> Dict[str, Any]:
         subscription = payments.create_subscription(request.user, **data)
-        if set_as_customer_default_payment_method and subscription['default_payment_method']:
-            payments.modify_default_payment_method(self.request.user, subscription['default_payment_method'])
         return self.make_response(subscription)
 
-    def post(self, request, price_id: str) -> Response:
-        return self.run_stripe_response(request, price_id=price_id)
+    def _cancel_subscription(self, request, **data) -> Dict[str, Any]:
+        subscription = payments.cancel_subscription(request.user, **data)
+        return self.make_response(subscription)
+
+    def _modify_subscription(self, request, **data) -> Dict[str, Any]:
+        subscription = payments.modify_subscription(request.user, **data)
+        return self.make_response(subscription)
+
+    def get(self, request: Request) -> Response:
+        return self.run_stripe_response(request)
+
+    def post(self, request) -> Response:
+        return self.run_stripe_response(request, method=self._create_subscription)
+
+    def put(self, request, subscription_id: str) -> Response:
+        return self.run_stripe_response(request, method=self._modify_subscription, subscription_id=subscription_id)
+
+    def delete(self, request, subscription_id: str) -> Response:
+        return self.run_stripe_response(request, method=self._cancel_subscription, subscription_id=subscription_id)
 
 
 class SubscriptionFormView(LoginRequiredMixin, FormView):
