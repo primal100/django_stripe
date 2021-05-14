@@ -2,6 +2,8 @@ import stripe
 import logging
 
 from operator import itemgetter
+
+import subscriptions.exceptions
 from stripe.error import StripeError
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
@@ -9,7 +11,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from django_stripe import payments, exceptions
 from subscriptions.types import Protocol
-from typing import Dict, Any, Callable, List, Optional, Type, Union, Iterable
+from typing import Dict, Any, Callable, List, Type, Union, Iterable, Optional
 
 
 DataType = Union[Dict[str, Any], List[Any]]
@@ -29,8 +31,10 @@ class StripeViewMixin(Protocol):
 
     def make_response(self, item: Dict[str, Any]) -> Dict[str, Any]:
         if self.response_keys_exclude:
-            return {k: item[k] for k in item if item not in self.response_keys_exclude}
-        return {k: item[k] for k in self.response_keys}
+            return {k: item[k] for k in item.keys() if k not in self.response_keys_exclude}
+        if self.response_keys:
+            return {k: item[k] for k in self.response_keys}
+        return item
 
     def run_stripe(self, request: Request, method: Callable = None, **data) -> DataType:
         method = method or self.make_request
@@ -50,26 +54,35 @@ class StripeViewMixin(Protocol):
 
 class StripeViewWithSerializerMixin(StripeViewMixin, Protocol):
     serializer_class: Type = None
+    serializer_classes: Dict[str, Type] = None
 
-    def get_serializer_class(self) -> Type:
+    @property
+    def name_in_errors(self) -> str:
+        return self.stripe_resource.__name__
+
+    def get_serializer_class(self, request: Request) -> Optional[Type]:
+        if self.serializer_classes:
+            serializer_class = self.serializer_classes.get(request.method)
+            if serializer_class:
+                return serializer_class
         return self.serializer_class
 
-    def get_serializer_context(self) -> Dict[str, Any]:
+    def get_serializer_context(self, request) -> Dict[str, Any]:
         return {
-            'request': self.request,
+            'request': request,
             'view': self
         }
 
-    def get_serializer(self, *args, **kwargs):
-        serializer_class = self.get_serializer_class()
+    def get_serializer(self, request, *args, **kwargs):
+        serializer_class = self.get_serializer_class(request)
         if serializer_class:
-            kwargs.setdefault('context', self.get_serializer_context())
+            kwargs.setdefault('context', self.get_serializer_context(request))
             return serializer_class(*args,  **kwargs)
         return None
 
     def run_serialized_stripe_response(self, request: Request, method: Callable = None,
                                        status_code: int = None, **kwargs) -> Response:
-        serializer = self.get_serializer(data=request.data or request.query_params)
+        serializer = self.get_serializer(request, data=request.data or request.query_params)
         if not serializer:
             result = self.run_stripe(request, method=method, **kwargs)
         elif serializer.is_valid():
@@ -88,8 +101,8 @@ class StripeListMixin(StripeViewWithSerializerMixin, Protocol):
     def list(self, request: Request, **kwargs) -> Iterable[Dict[str, Any]]:
         return payments.list_customer_resource(request.user, self.stripe_resource, **kwargs)
 
-    def retrieve(self, request: Request, **kwargs) -> Dict[str, Any]:
-        return payments.retrieve(request.user, self.stripe_resource, **kwargs)
+    def retrieve(self, request: Request, id: str) -> Dict[str, Any]:
+        return payments.retrieve(request.user, self.stripe_resource, id)
 
     def prepare_list(self, items: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
         return sorted(
@@ -100,15 +113,15 @@ class StripeListMixin(StripeViewWithSerializerMixin, Protocol):
     def get_list(self, request: Request, **data) -> List[Dict[str, Any]]:
         return self.prepare_list(self.list(request, **data))
 
-    def get_one(self, request: Request, **data) -> Dict[str, Any]:
-        obj = self.retrieve(request, **data)
-        if not obj:
-            obj = self.list(request, **data)[0]
-        return self.make_response(obj)
+    def get_one(self, request: Request, id: str) -> Dict[str, Any]:
+        try:
+            return self.make_response(self.retrieve(request, id))
+        except subscriptions.exceptions.StripeWrongCustomer:
+            raise exceptions.StripeException(f"No such {self.name_in_errors}: '{id}'")
 
     def get(self, request: Request, **kwargs) -> Response:
         if kwargs:
-            return Response(self.run_stripe_response(request, method=self.get_one, **kwargs))
+            return self.run_stripe_response(request, method=self.get_one, **kwargs)
         return self.run_serialized_stripe_response(request, method=self.get_list)
 
 
@@ -142,22 +155,33 @@ class StripeCreateWithSerializerMixin(StripeViewWithSerializerMixin, Protocol):
 class StripeModifyMixin(StripeViewWithSerializerMixin, Protocol):
     permission_classes = (IsAuthenticated,)
 
-    def modify(self, request: Request, **data) -> Dict[str, Any]:
-        return payments.modify(request.user, self.stripe_resource, **data)
+    def modify(self, request: Request, id: str, **data) -> Dict[str, Any]:
+        return payments.modify(request.user, self.stripe_resource, id, **data)
 
-    def run_modify(self, request: Request, **data) -> Dict[str, Any]:
-        return self.make_response(self.modify(request, **data))
+    def run_modify(self, request: Request, id: str, **data) -> Dict[str, Any]:
+        try:
+            return self.make_response(self.modify(request, id=id, **data))
+        except subscriptions.exceptions.StripeWrongCustomer:
+            raise exceptions.StripeException(f"No such {self.stripe_resource.__name__}: '{id}'")
 
-    def put(self, request: Request, **kwargs) -> Response:
+    def put(self, request: Request, id: str, **kwargs) -> Response:
         return self.run_serialized_stripe_response(request, method=self.run_modify,
-                                                   status_code=status.HTTP_200_OK, **kwargs)
+                                                   status_code=status.HTTP_200_OK, id=id, **kwargs)
 
 
 class StripeDeleteMixin(StripeViewMixin, Protocol):
     permission_classes = (IsAuthenticated,)
 
-    def destroy(self, request: Request, **data) -> None:
-        payments.delete(request.user, self.stripe_resource, **data)
+    def destroy(self, request: Request, id: str) -> None:
+        payments.delete(request.user, self.stripe_resource, id)
 
-    def delete(self, request: Request, **kwargs) -> Response:
-        return self.run_stripe_response(request, method=self.destroy, status_code=status.HTTP_204_NO_CONTENT, **kwargs)
+    def run_delete(self, request: Request, id: str) -> None:
+        try:
+            self.destroy(request, id=id)
+        except subscriptions.exceptions.StripeWrongCustomer:
+            raise exceptions.StripeException(f"No such {self.stripe_resource.__name__}: '{id}'")
+
+    def delete(self, request: Request, id: str, **kwargs) -> Response:
+        return self.run_stripe_response(request, method=self.run_delete,
+                                        status_code=status.HTTP_204_NO_CONTENT,
+                                        id=id, **kwargs)

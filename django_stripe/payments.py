@@ -40,9 +40,12 @@ def modify_customer(user, **kwargs) -> stripe.Customer:
 
 @get_actual_user
 @subscriptions.decorators.customer_id_required
-def modify_default_payment_method(user, payment_method_id: str) -> stripe.Customer:
-    return modify_customer(user, invoice_settings={
-        'default_payment_method': payment_method_id})
+def modify_payment_method(user, id: str, set_as_default: bool = False, **kwargs) -> stripe.PaymentMethod:
+    if set_as_default:
+        modify_customer(user, invoice_settings={
+            'default_payment_method': id})
+        return retrieve(user, stripe.PaymentMethod, id)
+    return modify(user, stripe.PaymentMethod, id, **kwargs)
 
 
 @add_stripe_customer_if_not_existing
@@ -91,13 +94,13 @@ def get_prices(user, product: str = None, currency: str = None, **kwargs) -> Lis
 
 
 @get_actual_user
-def retrieve_product(user, product_id: str, price_kwargs: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    return subscriptions.retrieve_product(user, product_id, price_kwargs=price_kwargs)
+def retrieve_product(user, id: str, price_kwargs: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    return subscriptions.retrieve_product(user, id, price_kwargs=price_kwargs)
 
 
 @get_actual_user
-def retrieve_price(user, price_id: str) -> Dict[str, Any]:
-    return subscriptions.retrieve_price(user, price_id)
+def retrieve_price(user, id: str) -> Dict[str, Any]:
+    return subscriptions.retrieve_price(user, id)
 
 
 @get_actual_user
@@ -122,8 +125,8 @@ def list_payment_methods(user, types: List[PaymentMethodType] = None, **kwargs) 
 
 @get_actual_user
 @subscriptions.decorators.customer_id_required
-def detach_payment_method(user, payment_method_id: str) -> stripe.PaymentMethod:
-    payment_method = subscriptions.detach_payment_method(user, payment_method_id)
+def detach_payment_method(user, id: str) -> stripe.PaymentMethod:
+    payment_method = subscriptions.detach_payment_method(user, id)
     signals.payment_method_detached.send(sender=user, payment_methods=[payment_method])
     return payment_method
 
@@ -150,10 +153,10 @@ def create_subscription(user, price_id: str,
 
 @get_actual_user
 @subscriptions.decorators.customer_id_required
-def modify_subscription(user, subscription_id: str, set_as_default_payment_method: bool = False,
+def modify_subscription(user, id: str, set_as_default_payment_method: bool = False,
                         **kwargs) -> stripe.Subscription:
-    return subscriptions.modify_subscription(user, subscription_id,
-                                             set_as_default_payment_method=set_as_default_payment_method, **kwargs)
+    return subscriptions.modify_subscription(user, id, set_as_default_payment_method=set_as_default_payment_method,
+                                             **kwargs)
 
 
 @get_actual_user

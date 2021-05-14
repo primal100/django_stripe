@@ -1,4 +1,6 @@
 import pytest
+import stripe
+
 from django_stripe.tests import assert_customer_id_exists, make_request
 from django_stripe import signals
 import subscriptions
@@ -52,12 +54,9 @@ def test_billing_portal(authenticated_client_with_without_customer_id, user):
 @pytest.mark.django_db
 @pytest.mark.parametrize('method,view,price_id_as_url_params', [
     ('post', 'checkout', True),
-    ('post', 'setup-checkout', True),
+    ('post', 'setup-checkout', False),
     ('post', 'billing', False),
     ('post', 'subscriptions', False),
-    ('get', 'subscriptions', False),
-    ('get', 'payment-methods', False),
-    ('get', 'invoices', False),
     ('post', 'setup-intents', False)
 ])
 def test_unauthenticated(api_client, method, view, price_id_as_url_params, stripe_price_id):
@@ -103,14 +102,15 @@ def test_price_list_non_existing_currency(client, non_existing_currency, non_exi
 
 @pytest.mark.django_db
 def test_price_get_one(client_no_user_and_user_with_and_without_stripe_id,
-                       expected_subscription_prices, stripe_price_id):
+                       expected_subscription_prices_unsubscribed, stripe_price_id):
     response = make_request(client_no_user_and_user_with_and_without_stripe_id.get, 'prices', 200,
-                            url_params={'price': stripe_price_id})
-    assert response.data == expected_subscription_prices[0]
+                            url_params={'id': stripe_price_id})
+    assert response.data == expected_subscription_prices_unsubscribed[0]
 
 
 @pytest.mark.django_db
-def test_product_list(client_no_user_and_user_with_and_without_stripe_id, expected_subscription_products_and_prices_unsubscribed,
+def test_product_list(client_no_user_and_user_with_and_without_stripe_id,
+                      expected_subscription_products_and_prices_unsubscribed,
                       stripe_subscription_product_id, stripe_unsubscribed_product_id):
     response = make_request(client_no_user_and_user_with_and_without_stripe_id.get, 'products', 200,
                             ids=[stripe_subscription_product_id,
@@ -122,8 +122,8 @@ def test_product_list(client_no_user_and_user_with_and_without_stripe_id, expect
 def test_product_get_one(client_no_user_and_user_with_and_without_stripe_id,
                          expected_subscription_products_and_prices_unsubscribed, stripe_subscription_product_id):
     response = make_request(client_no_user_and_user_with_and_without_stripe_id.get, 'products', 200,
-                            url_params={'product_id': stripe_subscription_product_id})
-    assert response.data == expected_subscription_products_and_prices_unsubscribed[0]
+                            url_params={'id': stripe_subscription_product_id})
+    assert response.data == expected_subscription_products_and_prices_unsubscribed[1]
 
 
 @pytest.mark.django_db
@@ -162,23 +162,25 @@ def test_list_payment_methods(authenticated_client_with_customer_id, default_pay
 
 
 @pytest.mark.django_db
-def test_get_one_payment_methods(authenticated_client_with_customer_id, default_payment_method_from_api):
+def test_get_one_payment_method(authenticated_client_with_customer_id, default_payment_method_retrieved):
     response = make_request(authenticated_client_with_customer_id.get, "payment-methods", 200,
-                            url_params={'payment_method_id': default_payment_method_from_api['id']})
+                            url_params={'id': default_payment_method_retrieved['id']})
     data = response.data
-    assert data == default_payment_method_from_api
+    assert data == default_payment_method_retrieved
 
 
 @pytest.mark.django_db
 def test_change_default_payment_method(authenticated_client_with_customer_id,
+                                       user_with_customer_id,
                                        default_payment_method_from_api,
                                        payment_method_from_api):
+    pm_id = payment_method_from_api['id']
     response = make_request(authenticated_client_with_customer_id.put, "payment-methods", 200,
-                            url_params={'payment_method_id': payment_method_from_api['id']})
+                            url_params={'id': pm_id}, set_as_default=True)
     data = response.data
-    payment_method_from_api['default'] = True
-    default_payment_method_from_api['default'] = False
-    assert data == [payment_method_from_api, default_payment_method_from_api]
+    payment_method_from_api.pop('default')
+    assert data == payment_method_from_api
+    assert stripe.Customer.retrieve(user_with_customer_id.stripe_customer_id)['invoice_settings']['default_payment_method'] == pm_id
 
 
 @pytest.mark.django_db
@@ -186,7 +188,7 @@ def test_change_default_payment_method_non_existing(authenticated_client_with_cu
                                                     non_existing_payment_method_id,
                                                     non_existing_payment_method_error_2):
     response = make_request(authenticated_client_with_customer_id.put, "payment-methods", 500,
-                            url_params={'payment_method_id': non_existing_payment_method_id})
+                            url_params={'id': non_existing_payment_method_id})
     assert response.data == non_existing_payment_method_error_2
 
 
@@ -195,9 +197,8 @@ def test_detach_payment_method(authenticated_client_with_customer_id,
                                payment_method_from_api,
                                default_payment_method_from_api):
     response = make_request(authenticated_client_with_customer_id.delete, "payment-methods", 204,
-                            url_params={'payment_method_id': default_payment_method_from_api['id']})
-    data = response.data
-    assert data == [payment_method_from_api]
+                            url_params={'id': default_payment_method_from_api['id']})
+    assert response.data is None
 
 
 @pytest.mark.django_db
@@ -205,9 +206,8 @@ def test_detach_payment_method_all(authenticated_client_with_customer_id,
                                    payment_method_from_api,
                                    default_payment_method_from_api):
     response = make_request(authenticated_client_with_customer_id.delete, "payment-methods", 204,
-                            url_params={'payment_method_id': "*"})
-    data = response.data
-    assert data == []
+                            url_params={'id': "*"})
+    assert response.data is None
 
 
 @pytest.mark.django_db
@@ -215,7 +215,7 @@ def test_detach_no_payment_method(authenticated_client_with_customer_id,
                                   non_existing_payment_method_id,
                                   non_existing_payment_method_error_2):
     response = make_request(authenticated_client_with_customer_id.delete, "payment-methods", 500,
-                            url_params={'payment_method_id': non_existing_payment_method_id})
+                            url_params={'id': non_existing_payment_method_id})
     assert response.data == non_existing_payment_method_error_2
 
 
@@ -224,7 +224,7 @@ def test_detach_other_user_payment_method(authenticated_client_second_user,
                                           default_payment_method_id,
                                           non_existing_payment_method_error_other_user):
     response = make_request(authenticated_client_second_user.delete, "payment-methods", 500,
-                            url_params={'payment_method_id': default_payment_method_id})
+                            url_params={'id': default_payment_method_id})
     assert response.data == non_existing_payment_method_error_other_user
 
 
@@ -249,7 +249,7 @@ def test_new_subscription(authenticated_client_with_customer_id, stripe_price_id
 def test_new_subscription_no_price_id(authenticated_client_with_customer_id, non_existing_price_id,
                                       stripe_subscription_product_id, payment_method_id, non_existing_price_id_error):
     response = make_request(authenticated_client_with_customer_id.post, "subscriptions", 500,
-                            price_id = non_existing_price_id, default_payment_method=payment_method_id)
+                            price_id=non_existing_price_id, default_payment_method=payment_method_id)
     assert response.data == non_existing_price_id_error
 
 
@@ -270,7 +270,7 @@ def test_new_subscription_no_payment_method(authenticated_client_with_customer_i
                                             stripe_subscription_product_id,
                                             permission_error):
     response = make_request(authenticated_client_with_customer_id.post, "subscriptions", 500,
-                            url_params={'price_id': stripe_price_id})
+                            price_id=stripe_price_id)
     assert response.data == {'detail': 'This customer has no attached payment source or default payment method.'}
     response = subscriptions.is_subscribed_and_cancelled_time(user_with_customer_id,
                                                               stripe_subscription_product_id)
@@ -279,18 +279,50 @@ def test_new_subscription_no_payment_method(authenticated_client_with_customer_i
 
 
 @pytest.mark.django_db
-def test_invoice_list():
-    pass
+def test_invoice_list(authenticated_client_with_customer_id, subscription):
+    response = make_request(authenticated_client_with_customer_id.get, "invoices", 200)
+    invoice = response.data[0]
+    assert invoice['billing_reason'] == 'subscription_create'
+    assert invoice['hosted_invoice_url']
+    assert invoice['invoice_pdf']
+    assert tuple(invoice.keys()) == ('id', "amount_due", "amount_paid", "amount_remaining", "billing_reason",
+                                   "created","hosted_invoice_url", "invoice_pdf", "subscription")
 
 
 @pytest.mark.django_db
-def test_invoice_list_second_user(second_user):
-    pass
+def test_invoice_list_none(authenticated_client_second_user, subscription):
+    response = make_request(authenticated_client_second_user.get, "invoices", 200)
+    assert response.data == []
 
 
 @pytest.mark.django_db
-def test_invoice_get_one():
-    pass
+def test_invoice_list_no_user(client, subscription):
+    response = make_request(client.get, "invoices", 200)
+    assert response.data == []
+
+
+@pytest.mark.django_db
+def test_invoice_get_one(authenticated_client_with_customer_id, invoice):
+    response = make_request(authenticated_client_with_customer_id.get, "invoices", 200,
+                            url_params={'id': invoice['id']})
+    data = response.data
+    assert data['hosted_invoice_url'] == invoice['hosted_invoice_url']
+    assert tuple(data.keys()) == ('id', "amount_due", "amount_paid", "amount_remaining", "billing_reason",
+                                  "created","hosted_invoice_url", "invoice_pdf", "subscription")
+
+
+@pytest.mark.django_db
+def test_invoice_get_one_wrong_user(authenticated_client_second_user, invoice, invoice_not_owned_error):
+    response = make_request(authenticated_client_second_user.get, "invoices", 500,
+                            url_params={'id': invoice['id']})
+    assert response.data == invoice_not_owned_error
+
+
+@pytest.mark.django_db
+def test_non_existing_invoice(authenticated_client_with_customer_id, non_existing_invoice_id, invoice_not_exist_error):
+    response = make_request(authenticated_client_with_customer_id.get, "invoices", 500,
+                            url_params={'id': non_existing_invoice_id})
+    assert response.data == invoice_not_exist_error
 
 
 @pytest.mark.django_db

@@ -10,9 +10,13 @@ class ProductSerializer(serializers.Serializer):
     ids = serializers.ListField(child=serializers.CharField(max_length=255), required=False)
 
 
+class PaymentMethodModifySerializer(serializers.Serializer):
+    set_as_default = serializers.BooleanField(default=False, required=False)
+
+
 class SubscriptionModifySerializer(serializers.Serializer):
     default_payment_method = serializers.CharField(max_length=255, required=False)
-    set_as_customer_default_payment_method = serializers.BooleanField(default=False, required=False)
+    set_as_default_payment_method = serializers.BooleanField(default=False, required=False)
 
 
 class SubscriptionCreateSerializer(SubscriptionModifySerializer):

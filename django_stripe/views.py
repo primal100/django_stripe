@@ -4,10 +4,11 @@ from django.views.generic import FormView, RedirectView, TemplateView
 from django.contrib.auth.mixins import LoginRequiredMixin
 from stripe.error import StripeError
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
 from rest_framework.request import Request
 from rest_framework.views import APIView
 from . import exceptions
+import logging
 from subscriptions.exceptions import StripeWrongCustomer
 from .conf import settings
 from .forms import SubscriptionForm
@@ -15,6 +16,9 @@ from . import serializers
 from . import payments
 from view_mixins import StripeListMixin, StripeCreateMixin, StripeCreateWithSerializerMixin, StripeModifyMixin, StripeDeleteMixin
 from typing import Dict, Any, List, Optional, Type, Iterable
+
+
+logger = logging.getLogger("django_stripe")
 
 
 class StripePriceCheckoutView(APIView, StripeCreateMixin):
@@ -51,85 +55,84 @@ class StripePricesView(APIView, StripeListMixin):
     serializer_class = serializers.PriceSerializer
     response_keys = ("id", "recurring", "type", "currency", "unit_amount", "unit_amount_decimal",
                      "nickname", "metadata", "product", "subscription_info")
-    order_by = ("unit_amount", "created", "id")
+    order_by = ("unit_amount", "id")
     order_reverse = False
 
     def list(self, request: Request, **kwargs) -> List[Dict[str, Any]]:
-        return payments.get_prices(request, **kwargs)
+        return payments.get_prices(request.user, **kwargs)
 
-    def retrieve(self, request: Request, price_id: str = None, **kwargs) -> Dict[str, Any]:
-        return payments.retrieve_price(request.user, price_id)
+    def retrieve(self, request: Request, id: str) -> Dict[str, Any]:
+        return payments.retrieve_price(request.user, id)
 
 
 class StripeProductsView(APIView, StripeListMixin):
     serializer_class = serializers.ProductSerializer
-    response_keys = ("id", "images", "metadata", "name", "prices" "created", "shippable", "subscription_info",
+    response_keys = ("id", "images", "metadata", "name", "prices", "shippable", "subscription_info",
                      "type", "unit_label", "url")
+    order_by = ("id",)
     order_reverse = False
 
     def list(self, request: Request, **kwargs) -> List[Dict[str, Any]]:
         return payments.get_products(request.user, **kwargs)
 
-    def retrieve(self, request: Request, product_id: str = None, **kwargs) -> Dict[str, Any]:
-        return payments.retrieve_product(request.user, product_id)
+    def retrieve(self, request: Request, id: str) -> Dict[str, Any]:
+        return payments.retrieve_product(request.user, id)
 
 
 class StripeInvoiceView(APIView, StripeListMixin):
     stripe_resource = stripe.Invoice
     status_code = status.HTTP_200_OK
     serializer_class = serializers.InvoiceSerializer
-    permission_classes = (IsAuthenticated,)
     response_keys = ('id', "amount_due", "amount_paid", "amount_remaining", "billing_reason",
                      "created","hosted_invoice_url", "invoice_pdf", "subscription")
+
+    @property
+    def name_in_errors(self) -> str:
+        return self.stripe_resource.__name__.lower()
 
 
 class StripePaymentMethodView(APIView, StripeListMixin, StripeModifyMixin, StripeDeleteMixin):
     stripe_resource = stripe.PaymentMethod
+    serializer_classes = {
+        'PUT': serializers.PaymentMethodModifySerializer,
+    }
+    modify_serializer_class = serializers.PaymentMethodModifySerializer
     status_code = status.HTTP_200_OK
-    permission_classes = (IsAuthenticated,)
+    permission_classes = (IsAuthenticatedOrReadOnly,)
     response_keys_exclude = ('customer', 'livemode', 'metadata', 'object')
     order_by = ('default', 'created', 'id')
 
     def list(self, request: Request, **data) -> Iterable[stripe.PaymentMethod]:
         return payments.list_payment_methods(request.user, **data)
 
-    def modify(self, request, **data) -> Dict[str, Any]:
-        return payments.modify_default_payment_method(request.user, **data)
+    def modify(self, request, id: str, **data) -> Dict[str, Any]:
+        return payments.modify_payment_method(request.user, id=id, **data)
 
-    def destroy(self, request: Request, **data) -> None:
-        if data['payment_method_id'] == "*":
+    def destroy(self, request: Request, id: str) -> None:
+        if id == "*":
             payments.detach_all_payment_methods(request.user)
-        try:
-            payments.detach_payment_method(request.user, **data)
-        except StripeWrongCustomer as e:
-            raise exceptions.StripeException(f"No such PaymentMethod: '{data['payment_method_id']}'")
+        else:
+            payments.detach_payment_method(request.user, id)
 
 
 class StripeSubscriptionView(APIView, StripeListMixin, StripeCreateWithSerializerMixin,
                              StripeModifyMixin, StripeDeleteMixin):
     stripe_resource = stripe.Subscription
     status_code = status.HTTP_201_CREATED
-    list_serializer_class = serializers.SubscriptionListSerializer
-    update_serializer_class = serializers.SubscriptionModifySerializer
-    create_serializer_class = serializers.SubscriptionCreateSerializer
-    permission_classes = (IsAuthenticated,)
+    serializer_classes = {
+        'GET': serializers.SubscriptionListSerializer,
+        'PUT': serializers.SubscriptionModifySerializer,
+        'POST': serializers.SubscriptionCreateSerializer
+    }
+    permission_classes = (IsAuthenticatedOrReadOnly,)
     response_keys = ('id', 'cancel_at', 'current_period_end', 'current_period_start', 'days_until_due',
                      'latest_invoice', 'start_date', 'status', 'trial_end', 'trial_start')
-
-    def get_serializer_class(self) -> Optional[Type]:
-        if self.request.method == 'GET':
-            return self.list_serializer_class
-        if self.request.method == 'POST':
-            return self.create_serializer_class
-        if self.request.method == 'PUT':
-            return self.update_serializer_class
-        return None
 
     def create(self, request, **data) -> Dict[str, Any]:
         return payments.create_subscription(request.user, **data)
 
-    def modify(self, request, **data) -> Dict[str, Any]:
-        return payments.modify_subscription(request.user, **data)
+    def modify(self, request, id: str, **data) -> Dict[str, Any]:
+        return payments.modify_subscription(request.user, id, **data)
 
 
 class SubscriptionFormView(LoginRequiredMixin, FormView):

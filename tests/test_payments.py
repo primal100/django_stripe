@@ -147,7 +147,7 @@ def test_new_setup_intent(user_with_and_without_customer_id):
 def test_modify_default_payment_method(user_with_customer_id, payment_method_id):
     customer = stripe.Customer.retrieve(user_with_customer_id.stripe_customer_id)
     assert customer['invoice_settings']['default_payment_method'] is None
-    payments.modify_default_payment_method(user_with_customer_id, payment_method_id)
+    payments.modify_payment_method(user_with_customer_id, payment_method_id, set_as_default=True)
     customer = stripe.Customer.retrieve(user_with_customer_id.stripe_customer_id)
     assert customer['invoice_settings']['default_payment_method'] == payment_method_id
 

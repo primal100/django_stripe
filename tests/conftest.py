@@ -245,6 +245,12 @@ def default_payment_method_for_customer(user_with_customer_id) -> stripe.Payment
 
 
 @pytest.fixture
+def default_payment_method_retrieved(default_payment_method_from_api) -> stripe.PaymentMethod:
+    del default_payment_method_from_api['default']
+    return default_payment_method_from_api
+
+
+@pytest.fixture
 def default_payment_method_id(default_payment_method_for_customer) -> str:
     return default_payment_method_for_customer['id']
 
@@ -269,6 +275,16 @@ def non_existing_payment_method_id(user_with_customer_id) -> str:
 @pytest.fixture
 def subscription(user_with_customer_id, stripe_price_id, default_payment_method_id) -> stripe.Subscription:
     return subscriptions.create_subscription(user_with_customer_id, stripe_price_id)
+
+
+@pytest.fixture
+def invoice(user_with_customer_id, subscription) -> stripe.Invoice:
+    return stripe.Invoice.list(customer=user_with_customer_id.stripe_customer_id).data[0]
+
+
+@pytest.fixture
+def non_existing_invoice_id() -> str:
+    return 'in_ABCD123456'
 
 
 @pytest.fixture(scope="session")
@@ -512,6 +528,20 @@ def non_existing_price_id() -> str:
 @pytest.fixture
 def non_existing_price_id_error(non_existing_price_id) -> Dict[str, str]:
     return {'detail': f"No such price: '{non_existing_price_id}'"}
+
+
+def get_invoice_error(invoice_id: str) -> Dict[str, Any]:
+    return {'detail': f"No such invoice: '{invoice_id}'"}
+
+
+@pytest.fixture
+def invoice_not_owned_error(invoice) -> Dict[str, str]:
+    return get_invoice_error(invoice['id'])
+
+
+@pytest.fixture
+def invoice_not_exist_error(non_existing_invoice_id) -> Dict[str, str]:
+    return get_invoice_error(non_existing_invoice_id)
 
 
 @pytest.fixture
