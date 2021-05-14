@@ -10,10 +10,26 @@ class ProductSerializer(serializers.Serializer):
     ids = serializers.ListField(child=serializers.CharField(max_length=255), required=False)
 
 
-class SubscriptionSerializer(serializers.Serializer):
+class SubscriptionModifySerializer(serializers.Serializer):
     default_payment_method = serializers.CharField(max_length=255, required=False)
     set_as_customer_default_payment_method = serializers.BooleanField(default=False, required=False)
 
 
+class SubscriptionCreateSerializer(SubscriptionModifySerializer):
+    price_id: str = serializers.CharField(max_length=255, required=True)
+
+
 class SubscriptionListSerializer(serializers.Serializer):
+    price_id: str = serializers.CharField(max_length=255, required=False)
     active = serializers.BooleanField(required=False)
+
+
+class InvoiceSerializer(serializers.Serializer):
+    status = serializers.ChoiceField(choices=(
+        ('draft', 'Draft'),
+        ('open', 'Open'),
+        ('paid', 'paid'),
+        ('uncollectible', 'uncollectible'),
+        ('void', 'void'),
+    ), required=False)
+    subscription = serializers.CharField(max_length=255, required=False)

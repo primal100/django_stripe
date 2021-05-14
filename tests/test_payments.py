@@ -88,26 +88,18 @@ def test_billing_portal(user_with_and_without_customer_id):
 
 
 @pytest.mark.django_db
-def test_price_list_subscribed(user_with_customer_id, stripe_subscription_product_id,
-                               expected_subscription_prices, subscription):
-    result = payments.get_subscription_prices(user_with_customer_id, product=stripe_subscription_product_id)
-    assert result == expected_subscription_prices
-
-
-@pytest.mark.django_db
-def test_price_list_unsubscribed(no_user_and_user_with_and_without_customer_id, stripe_subscription_product_id,
-                                 expected_subscription_prices_unsubscribed):
-    result = payments.get_subscription_prices(no_user_and_user_with_and_without_customer_id,
-                                              product=stripe_subscription_product_id)
-    assert result == expected_subscription_prices_unsubscribed
-
-
-@pytest.mark.django_db
 def test_product_list_subscribed(user_with_customer_id, stripe_subscription_product_id, stripe_unsubscribed_product_id,
                                  expected_subscription_products_and_prices, subscription):
-    result = payments.get_subscription_products(user_with_customer_id, ids=[stripe_subscription_product_id,
-                                                                            stripe_unsubscribed_product_id])
+    result = payments.get_products(user_with_customer_id, ids=[stripe_subscription_product_id,
+                                                               stripe_unsubscribed_product_id])
     assert result == expected_subscription_products_and_prices
+
+
+@pytest.mark.django_db
+def test_product_retrieve(user_with_customer_id, stripe_subscription_product_id,
+                          expected_subscription_products_and_prices, subscription):
+    result = payments.retrieve_product(user_with_customer_id, stripe_subscription_product_id)
+    assert result == expected_subscription_products_and_prices[1]
 
 
 @pytest.mark.django_db
@@ -115,10 +107,32 @@ def test_product_list_unsubscribed(no_user_and_user_with_and_without_customer_id
                                    stripe_subscription_product_id,
                                    stripe_unsubscribed_product_id,
                                    expected_subscription_products_and_prices_unsubscribed):
-    result = payments.get_subscription_products(no_user_and_user_with_and_without_customer_id,
-                                                ids=[stripe_subscription_product_id,
-                                                     stripe_unsubscribed_product_id])
+    result = payments.get_products(no_user_and_user_with_and_without_customer_id,
+                                   ids=[stripe_subscription_product_id,
+                                       stripe_unsubscribed_product_id])
     assert result == expected_subscription_products_and_prices_unsubscribed
+
+
+@pytest.mark.django_db
+def test_price_list_subscribed(user_with_customer_id, stripe_subscription_product_id,
+                               expected_subscription_prices, subscription):
+    result = payments.get_prices(user_with_customer_id, product=stripe_subscription_product_id)
+    assert result == expected_subscription_prices
+
+
+@pytest.mark.django_db
+def test_price_list_unsubscribed(no_user_and_user_with_and_without_customer_id, stripe_subscription_product_id,
+                                 expected_subscription_prices_unsubscribed):
+    result = payments.get_prices(no_user_and_user_with_and_without_customer_id,
+                                              product=stripe_subscription_product_id)
+    assert result == expected_subscription_prices_unsubscribed
+
+
+@pytest.mark.django_db
+def test_price_retrieve(user_with_customer_id, stripe_price_id,
+                        expected_subscription_prices, subscription):
+    result = payments.retrieve_price(user_with_customer_id, stripe_price_id)
+    assert result == expected_subscription_prices[0]
 
 
 @pytest.mark.django_db
@@ -143,7 +157,6 @@ def test_list_payment_methods(user_with_customer_id, default_payment_method_save
     payment_methods = list(payments.list_payment_methods(user_with_customer_id))
     default_payment_method_saved['default'] = True
     payment_method_saved['default'] = False
-    print(default_payment_method_saved)
     assert payment_methods == [payment_method_saved, default_payment_method_saved]
 
 
@@ -156,42 +169,68 @@ def test_detach_payment_method(user_with_customer_id, default_payment_method_sav
 
 @pytest.mark.django_db
 def test_detach_all_payment_methods(user_with_customer_id, default_payment_method_saved):
-    num = payments.detach_all_payment_methods(user_with_customer_id, types=["card"])
-    assert num == 1
+    payment_methods = payments.detach_all_payment_methods(user_with_customer_id, types=["card"])
+    default_payment_method_saved["customer"] = None
+    assert payment_methods == [default_payment_method_saved]
     payment_method = stripe.PaymentMethod.retrieve(default_payment_method_saved["id"])
     assert payment_method["customer"] is None
 
 
 @pytest.mark.django_db
-def test_new_subscription(user_with_customer_id, payment_method_id, stripe_price_id, stripe_subscription_product_id):
+def test_create_subscription(user_with_customer_id, payment_method_id, default_payment_method_id,
+                             stripe_price_id, stripe_subscription_product_id):
     payments.create_subscription(user_with_customer_id, stripe_price_id, default_payment_method=payment_method_id)
     response = subscriptions.is_subscribed_and_cancelled_time(user_with_customer_id, stripe_subscription_product_id)
     assert response['subscribed'] is True
     assert response['cancel_at'] is None
+    customer = stripe.Customer.retrieve(user_with_customer_id.stripe_customer_id)
+    assert customer['invoice_settings']['default_payment_method'] == default_payment_method_id
 
 
 @pytest.mark.django_db
-def test_update_subscription():
-    pass
+def test_modify_subscription_payment_method(user_with_customer_id, subscription,
+                                            payment_method_id, default_payment_method_id):
+    assert subscription['default_payment_method'] is None
+    payments.modify_subscription(user_with_customer_id, subscription['id'],
+                                 default_payment_method=payment_method_id)
+    sub = stripe.Subscription.retrieve(subscription['id'])
+    assert sub['default_payment_method'] == payment_method_id
+    customer = stripe.Customer.retrieve(user_with_customer_id.stripe_customer_id)
+    assert customer['invoice_settings']['default_payment_method'] == default_payment_method_id
 
 
 @pytest.mark.django_db
-def test_cancel_subscription():
-    pass
+def test_cancel_subscription(user_with_customer_id, subscription, stripe_subscription_product_id):
+    payments.delete(user_with_customer_id, stripe.Subscription, subscription['id'])
+    response = subscriptions.is_subscribed_and_cancelled_time(user_with_customer_id, stripe_subscription_product_id)
+    assert response['subscribed'] is False
+    assert response['cancel_at'] is None
 
 
 @pytest.mark.django_db
-def test_list_subscription():
-    pass
+def test_list_subscription(user_with_customer_id, subscription):
+    subs = payments.list_customer_resource(user_with_customer_id, stripe.Subscription)
+    assert subs == [subscription]
+
+
+@pytest.mark.django_db
+def test_invoice_list(user_with_customer_id, subscription):
+    invoices = payments.list_customer_resource(user_with_customer_id, stripe.Invoice)
+    invoice = invoices[0]
+    assert invoice['billing_reason'] == 'subscription_create'
+    assert invoice['customer'] == user_with_customer_id.stripe_customer_id
+    assert invoice['hosted_invoice_url']
+    assert invoice['invoice_pdf']
+
+
+@pytest.mark.django_db
+def test_invoice_list_none(user_with_and_without_customer_id):
+    invoices = payments.list_customer_resource(user_with_and_without_customer_id, stripe.Invoice)
+    assert invoices == []
 
 
 @pytest.mark.django_db
 def test_check_subscription():
-    pass
-
-
-@pytest.mark.django_db
-def test_invoice_list():
     pass
 
 

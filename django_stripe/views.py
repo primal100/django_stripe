@@ -1,219 +1,120 @@
 import stripe
-import logging
-
-from .forms import SubscriptionForm
 from django.contrib import messages
 from django.views.generic import FormView, RedirectView, TemplateView
 from django.contrib.auth.mixins import LoginRequiredMixin
-from operator import itemgetter
 from stripe.error import StripeError
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
-from rest_framework.response import Response
 from rest_framework.views import APIView
 from . import exceptions
-from .permissions import StripeCustomerIdRequiredOrReadOnly
 from subscriptions.exceptions import StripeWrongCustomer
-from subscriptions.types import Protocol
 from .conf import settings
+from .forms import SubscriptionForm
 from . import serializers
 from . import payments
-from typing import Dict, Any, Callable, List, Optional, Type, Union
+from view_mixins import StripeListMixin, StripeCreateMixin, StripeCreateWithSerializerMixin, StripeModifyMixin, StripeDeleteMixin
+from typing import Dict, Any, List, Optional, Type, Iterable
 
 
-DataType = Union[Dict[str, Any], List[Any]]
-
-
-logger = logging.getLogger("django_stripe")
-
-
-class StripeViewMixin(Protocol):
-    throttle_scope = 'payments'
-    status_code = status.HTTP_200_OK
-
-    def make_request(self, request: Request, **data) -> DataType:
-        raise NotImplementedError
-
-    def run_stripe(self, request: Request, method: Callable = None, **data) -> DataType:
-        method = method or self.make_request
-        try:
-            return method(request, **data)
-        except stripe.error.StripeError as e:
-            logger.exception(e, exc_info=e)
-            raise exceptions.StripeException(detail=e)
-
-    def run_stripe_response(self, request: Request, method: Callable = None,
-                            status_code: int = None, **data) -> Response:
-        return Response(
-            self.run_stripe(request, method, **data),
-            status=status_code or self.status_code
-        )
-
-
-class StripeViewWithSerializerMixin(StripeViewMixin, Protocol):
-    serializer_class: Type = None
-
-    def get_serializer_class(self) -> Type:
-        return self.serializer_class
-
-    def get_serializer_context(self) -> Dict[str, Any]:
-        return {
-            'request': self.request,
-            'view': self
-        }
-
-    def get_serializer(self, *args, **kwargs):
-        serializer_class = self.get_serializer_class()
-        if serializer_class:
-            kwargs.setdefault('context', self.get_serializer_context())
-            return serializer_class(*args,  **kwargs)
-        return None
-
-    def run_stripe_response(self, request: Request, method: Callable = None,
-                            status_code: int = None, **kwargs) -> Response:
-        serializer = self.get_serializer(data=request.data or request.query_params)
-        if not serializer:
-            result = self.run_stripe(request, method=method, **kwargs)
-        elif serializer.is_valid():
-            data = serializer.data
-            result = self.run_stripe(request, method=method, **data, **kwargs)
-        else:
-            result = serializer.errors
-            status_code = status.HTTP_400_BAD_REQUEST
-        return Response(result, status=status_code or self.status_code)
-
-
-class StripePriceCheckoutView(APIView, StripeViewMixin):
+class StripePriceCheckoutView(APIView, StripeCreateMixin):
     permission_classes = (IsAuthenticated,)
+    response_keys: tuple = ("id",)
 
-    @staticmethod
-    def make_checkout(request: Request, **data) -> stripe.checkout.Session:
+    def create(self, request: Request, **data) -> stripe.checkout.Session:
         return payments.create_subscription_checkout(request.user, **data)
-
-    def make_request(self, request: Request, **data) -> Dict[str, Any]:
-        session = self.make_checkout(request, **data)
-        return {'sessionId': session['id']}
-
-    def post(self, request: Request, price_id: str) -> Response:
-        return self.run_stripe_response(request, price_id=price_id)
 
 
 class StripeSetupCheckoutView(StripePriceCheckoutView):
 
-    @staticmethod
-    def make_checkout(request: Request, **data) -> stripe.checkout.Session:
+    def create(self, request: Request, **data) -> stripe.checkout.Session:
         return payments.create_setup_checkout(request.user, **data)
 
-    def post(self, request: Request, **kwargs):
-        return self.run_stripe_response(request, **kwargs)
 
-
-class StripeBillingPortalView(APIView, StripeViewMixin):
+class StripeBillingPortalView(APIView, StripeCreateMixin):
     permission_classes = (IsAuthenticated,)
-    throttle_scope = "payments"
+    response_keys: tuple = ("url",)
 
-    def make_request(self, request: Request, **kwargs) -> Dict[str, str]:
-        session = payments.create_billing_portal(request.user, **kwargs)
-        return {'url': session['url']}
-
-    def post(self, request: Request) -> Response:
-        return self.run_stripe_response(request)
+    def create(self, request: Request, **kwargs) -> stripe.billing_portal.session:
+        return payments.create_billing_portal(request.user, **kwargs)
 
 
-class StripePricesView(APIView, StripeViewWithSerializerMixin):
+class StripeSetupIntentView(APIView, StripeCreateMixin):
+    permission_classes = (IsAuthenticated,)
+    response_keys = ('id', 'client_secret', 'payment_method_types')
+
+    def create(self, request: Request, **data) -> stripe.SetupIntent:
+        return payments.create_setup_intent(request.user, **data)
+
+
+class StripePricesView(APIView, StripeListMixin):
     serializer_class = serializers.PriceSerializer
+    response_keys = ("id", "recurring", "type", "currency", "unit_amount", "unit_amount_decimal",
+                     "nickname", "metadata", "product", "subscription_info")
+    order_by = ("unit_amount", "created", "id")
+    order_reverse = False
 
-    def make_request(self, request: Request, **data) -> List[Dict[str, Any]]:
-        return payments.get_subscription_prices(request.user, **data)
+    def list(self, request: Request, **kwargs) -> List[Dict[str, Any]]:
+        return payments.get_prices(request, **kwargs)
 
-    def get(self, request: Request) -> Response:
-        return self.run_stripe_response(request)
+    def retrieve(self, request: Request, price_id: str = None, **kwargs) -> Dict[str, Any]:
+        return payments.retrieve_price(request.user, price_id)
 
 
-class StripeProductsView(APIView, StripeViewWithSerializerMixin):
+class StripeProductsView(APIView, StripeListMixin):
     serializer_class = serializers.ProductSerializer
+    response_keys = ("id", "images", "metadata", "name", "prices" "created", "shippable", "subscription_info",
+                     "type", "unit_label", "url")
+    order_reverse = False
 
-    def make_request(self, request: Request, **data) -> List[Dict[str, Any]]:
-        return payments.get_subscription_products(request.user, **data)
+    def list(self, request: Request, **kwargs) -> List[Dict[str, Any]]:
+        return payments.get_products(request.user, **kwargs)
 
-    def get(self, request: Request) -> Response:
-        return self.run_stripe_response(request)
+    def retrieve(self, request: Request, product_id: str = None, **kwargs) -> Dict[str, Any]:
+        return payments.retrieve_product(request.user, product_id)
 
 
-class StripeSetupIntentView(APIView, StripeViewMixin):
-    status_code = status.HTTP_201_CREATED
+class StripeInvoiceView(APIView, StripeListMixin):
+    stripe_resource = stripe.Invoice
+    status_code = status.HTTP_200_OK
+    serializer_class = serializers.InvoiceSerializer
     permission_classes = (IsAuthenticated,)
-    response_keys = ['id', 'client_secret', 'payment_method_types']
-
-    def make_response(self, setup_intent: stripe.SetupIntent) -> Dict[str, Any]:
-        return {k: setup_intent[k] for k in self.response_keys}
-
-    def make_request(self, request: Request, **data) -> Dict[str, Any]:
-        setup_intent = payments.create_setup_intent(request.user, **data)
-        return self.make_response(setup_intent)
-
-    def post(self, request: Request) -> Response:
-        return self.run_stripe_response(request)
+    response_keys = ('id', "amount_due", "amount_paid", "amount_remaining", "billing_reason",
+                     "created","hosted_invoice_url", "invoice_pdf", "subscription")
 
 
-class StripePaymentMethodView(APIView, StripeViewMixin):
+class StripePaymentMethodView(APIView, StripeListMixin, StripeModifyMixin, StripeDeleteMixin):
+    stripe_resource = stripe.PaymentMethod
     status_code = status.HTTP_200_OK
     permission_classes = (IsAuthenticated,)
-    response_keys_delete = ['customer', 'livemode', 'metadata', 'object']
+    response_keys_exclude = ('customer', 'livemode', 'metadata', 'object')
+    order_by = ('default', 'created', 'id')
 
-    def make_response(self, payment_method: stripe.PaymentMethod) -> Dict[str, Any]:
-        return {k: payment_method[k] for k in payment_method.keys() if k not in self.response_keys_delete}
+    def list(self, request: Request, **data) -> Iterable[stripe.PaymentMethod]:
+        return payments.list_payment_methods(request.user, **data)
 
-    def make_request(self, request: Request, **data) -> List[Dict[str, Any]]:
-        payment_methods = payments.list_payment_methods(request.user, **data)
-        return sorted(
-            [self.make_response(payment_method) for payment_method in payment_methods],
-            key=itemgetter('default', 'created'), reverse=True
-        )
+    def modify(self, request, **data) -> Dict[str, Any]:
+        return payments.modify_default_payment_method(request.user, **data)
 
-    def _modify_default_payment_method(self, request, **data) -> List[Dict[str, Any]]:
-        payments.modify_default_payment_method(request.user, **data)
-        return self.run_stripe(request)
-
-    def _detach_payment_method(self, request, **data) -> List[Dict[str, Any]]:
+    def destroy(self, request: Request, **data) -> None:
+        if data['payment_method_id'] == "*":
+            payments.detach_all_payment_methods(request.user)
         try:
             payments.detach_payment_method(request.user, **data)
         except StripeWrongCustomer as e:
             raise exceptions.StripeException(f"No such PaymentMethod: '{data['payment_method_id']}'")
-        return self.run_stripe(request)
-
-    def _detach_all_payment_methods(self, request: Request, **data) -> List[Dict[str, Any]]:
-        payments.detach_all_payment_methods(request.user, **data)
-        return self.run_stripe(request)
-
-    def get(self, request: Request) -> Response:
-        return self.run_stripe_response(request)
-
-    def put(self, request: Request, payment_method_id: str) -> Response:
-        return self.run_stripe_response(request,
-                                        method=self._modify_default_payment_method,
-                                        payment_method_id=payment_method_id)
-
-    def delete(self, request: Request, payment_method_id: str) -> Response:
-        if payment_method_id == "*":
-            return self.run_stripe_response(request,
-                                            method=self._detach_all_payment_methods,
-                                            status_code=status.HTTP_204_NO_CONTENT)
-        return self.run_stripe_response(request,
-                                        method=self._detach_payment_method,
-                                        status_code=status.HTTP_204_NO_CONTENT,
-                                        payment_method_id=payment_method_id)
 
 
-class StripeSubscriptionView(APIView, StripeViewWithSerializerMixin):
+class StripeSubscriptionView(APIView, StripeListMixin, StripeCreateWithSerializerMixin,
+                             StripeModifyMixin, StripeDeleteMixin):
+    stripe_resource = stripe.Subscription
     status_code = status.HTTP_201_CREATED
     list_serializer_class = serializers.SubscriptionListSerializer
-    update_serializer_class = serializers.SubscriptionSerializer
-    create_serializer_class = serializers.SubscriptionSerializer
-    permission_classes = (StripeCustomerIdRequiredOrReadOnly,)
-    response_keys = ['id', 'cancel_at', 'current_period_end', 'current_period_start', 'days_until_due',
-                     'latest_invoice', 'start_date', 'status', 'trial_end', 'trial_start']
+    update_serializer_class = serializers.SubscriptionModifySerializer
+    create_serializer_class = serializers.SubscriptionCreateSerializer
+    permission_classes = (IsAuthenticated,)
+    response_keys = ('id', 'cancel_at', 'current_period_end', 'current_period_start', 'days_until_due',
+                     'latest_invoice', 'start_date', 'status', 'trial_end', 'trial_start')
 
     def get_serializer_class(self) -> Optional[Type]:
         if self.request.method == 'GET':
@@ -221,42 +122,14 @@ class StripeSubscriptionView(APIView, StripeViewWithSerializerMixin):
         if self.request.method == 'POST':
             return self.create_serializer_class
         if self.request.method == 'PUT':
-            return self.create_serializer_class
+            return self.update_serializer_class
         return None
 
-    def make_response(self, subscription: stripe.Subscription) -> Dict[str, Any]:
-        return {k: subscription[k] for k in self.response_keys}
+    def create(self, request, **data) -> Dict[str, Any]:
+        return payments.create_subscription(request.user, **data)
 
-    def make_request(self, request: Request, **data) -> List[Dict[str, Any]]:
-        subs = payments.list_subscriptions(request.user, **data)
-        return sorted(
-            [self.make_response(sub) for sub in subs],
-            key=itemgetter('created'), reverse=True
-        )
-
-    def _create_subscription(self, request, **data) -> Dict[str, Any]:
-        subscription = payments.create_subscription(request.user, **data)
-        return self.make_response(subscription)
-
-    def _cancel_subscription(self, request, **data) -> Dict[str, Any]:
-        subscription = payments.cancel_subscription(request.user, **data)
-        return self.make_response(subscription)
-
-    def _modify_subscription(self, request, **data) -> Dict[str, Any]:
-        subscription = payments.modify_subscription(request.user, **data)
-        return self.make_response(subscription)
-
-    def get(self, request: Request) -> Response:
-        return self.run_stripe_response(request)
-
-    def post(self, request) -> Response:
-        return self.run_stripe_response(request, method=self._create_subscription)
-
-    def put(self, request, subscription_id: str) -> Response:
-        return self.run_stripe_response(request, method=self._modify_subscription, subscription_id=subscription_id)
-
-    def delete(self, request, subscription_id: str) -> Response:
-        return self.run_stripe_response(request, method=self._cancel_subscription, subscription_id=subscription_id)
+    def modify(self, request, **data) -> Dict[str, Any]:
+        return payments.modify_subscription(request.user, **data)
 
 
 class SubscriptionFormView(LoginRequiredMixin, FormView):

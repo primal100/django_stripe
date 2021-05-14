@@ -6,7 +6,7 @@ from .conf import settings
 from rest_framework.exceptions import NotAuthenticated
 from . import signals
 from .utils import get_actual_user, user_description
-from typing import List, Dict, Any, Callable, Generator
+from typing import List, Dict, Any, Callable, Generator, Optional
 
 
 def add_stripe_customer_if_not_existing(f):
@@ -80,14 +80,24 @@ def create_billing_portal(user) -> stripe.billing_portal.Session:
 
 
 @get_actual_user
-def get_subscription_products(user, ids: List[str] = None, price_kwargs: Dict[str, Any] = None,
-                              **kwargs) -> List[Dict[str, Any]]:
+def get_products(user, ids: List[str] = None, price_kwargs: Dict[str, Any] = None,
+                 **kwargs) -> List[Dict[str, Any]]:
     return subscriptions.get_subscription_products_and_prices(user, ids=ids, price_kwargs=price_kwargs, **kwargs)
 
 
 @get_actual_user
-def get_subscription_prices(user, product: str = None, currency: str = None, **kwargs) -> List[Dict[str, Any]]:
+def get_prices(user, product: str = None, currency: str = None, **kwargs) -> List[Dict[str, Any]]:
     return subscriptions.get_subscription_prices(user, product=product, currency=currency, **kwargs)
+
+
+@get_actual_user
+def retrieve_product(user, product_id: str, price_kwargs: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    return subscriptions.retrieve_product(user, product_id, price_kwargs=price_kwargs)
+
+
+@get_actual_user
+def retrieve_price(user, price_id: str) -> Dict[str, Any]:
+    return subscriptions.retrieve_price(user, price_id)
 
 
 @get_actual_user
@@ -111,6 +121,7 @@ def list_payment_methods(user, types: List[PaymentMethodType] = None, **kwargs) 
 
 
 @get_actual_user
+@subscriptions.decorators.customer_id_required
 def detach_payment_method(user, payment_method_id: str) -> stripe.PaymentMethod:
     payment_method = subscriptions.detach_payment_method(user, payment_method_id)
     signals.payment_method_detached.send(sender=user, payment_methods=[payment_method])
@@ -131,23 +142,43 @@ def detach_all_payment_methods(user, types: List[PaymentMethodType] = None, **kw
 def create_subscription(user, price_id: str,
                         set_as_default_payment_method: bool = False, **kwargs) -> stripe.Subscription:
     subscription = subscriptions.create_subscription(user, price_id,
-                                                     set_as_default_payment_method=set_as_default_payment_method, **kwargs)
+                                                     set_as_default_payment_method=set_as_default_payment_method,
+                                                     **kwargs)
     signals.subscription_created.send(sender=user, subscription=subscription)
     return subscription
 
 
 @get_actual_user
-def list_subscriptions(user, **kwargs) -> List[stripe.Subscription]:
-    return subscriptions.list_subscriptions(user, **kwargs)
+@subscriptions.decorators.customer_id_required
+def modify_subscription(user, subscription_id: str, set_as_default_payment_method: bool = False,
+                        **kwargs) -> stripe.Subscription:
+    return subscriptions.modify_subscription(user, subscription_id,
+                                             set_as_default_payment_method=set_as_default_payment_method, **kwargs)
+
+
+@get_actual_user
+def list_customer_resource(user, obj_cls: Any, **kwargs) -> List[Dict[str, Any]]:
+    if not user or not user.stripe_customer_id:
+        return []
+    return obj_cls.list(customer=user.stripe_customer_id, **kwargs)['data']
+
+
+@get_actual_user
+def retrieve(user, obj_cls: Any, obj_id: str) -> Dict[str, Any]:
+    return subscriptions.retrieve(user, obj_cls, obj_id)
 
 
 @get_actual_user
 @subscriptions.decorators.customer_id_required
-def cancel_subscription(user, sub_id: str) -> stripe.Subscription:
-    return subscriptions.cancel_subscription(user, sub_id)
+def delete(user, obj_cls: Any, obj_id: str) -> Dict[str, Any]:
+    obj = subscriptions.delete(user, obj_cls, obj_id)
+    signals.send_signal_on_delete(user, obj_cls, obj)
+    return obj
 
 
 @get_actual_user
 @subscriptions.decorators.customer_id_required
-def modify_subscription(user, subscription_id: str, **kwargs) -> stripe.Subscription:
-    return subscriptions.modify_subscription(user, subscription_id, **kwargs)
+def modify(user, obj_cls: Any, obj_id: str, **kwargs: Dict[str, Any]) -> Dict[str, Any]:
+    obj = subscriptions.modify(user, obj_cls, obj_id, **kwargs)
+    signals.send_signal_on_modify(user, obj_cls, obj)
+    return obj

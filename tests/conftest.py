@@ -391,7 +391,7 @@ def expected_subscription_products_and_prices(stripe_subscription_product_id, st
          'images': [],
          'metadata': {},
          'name': unsubscribed_product_name,
-            'prices': [{'currency': stripe_price_currency,
+          'prices': [{'currency': stripe_price_currency,
                   'id': stripe_unsubscribed_price_id,
                   'metadata': {},
                   'nickname': None,
