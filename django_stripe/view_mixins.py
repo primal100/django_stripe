@@ -29,6 +29,10 @@ class StripeViewMixin(Protocol):
 
     def make_request(self, request: Request, **data) -> DataType: ...
 
+    @property
+    def name_in_errors(self) -> str:
+        return self.stripe_resource.__name__
+
     def make_response(self, item: Dict[str, Any]) -> Dict[str, Any]:
         if self.response_keys_exclude:
             return {k: item[k] for k in item.keys() if k not in self.response_keys_exclude}
@@ -55,10 +59,6 @@ class StripeViewMixin(Protocol):
 class StripeViewWithSerializerMixin(StripeViewMixin, Protocol):
     serializer_class: Type = None
     serializer_classes: Dict[str, Type] = None
-
-    @property
-    def name_in_errors(self) -> str:
-        return self.stripe_resource.__name__
 
     def get_serializer_class(self, request: Request) -> Optional[Type]:
         if self.serializer_classes:
@@ -162,7 +162,7 @@ class StripeModifyMixin(StripeViewWithSerializerMixin, Protocol):
         try:
             return self.make_response(self.modify(request, id=id, **data))
         except subscriptions.exceptions.StripeWrongCustomer:
-            raise exceptions.StripeException(f"No such {self.stripe_resource.__name__}: '{id}'")
+            raise exceptions.StripeException(f"No such {self.name_in_errors}: '{id}'")
 
     def put(self, request: Request, id: str, **kwargs) -> Response:
         return self.run_serialized_stripe_response(request, method=self.run_modify,
@@ -179,7 +179,7 @@ class StripeDeleteMixin(StripeViewMixin, Protocol):
         try:
             self.destroy(request, id=id)
         except subscriptions.exceptions.StripeWrongCustomer:
-            raise exceptions.StripeException(f"No such {self.stripe_resource.__name__}: '{id}'")
+            raise exceptions.StripeException(f"No such {self.name_in_errors}: '{id}'")
 
     def delete(self, request: Request, id: str, **kwargs) -> Response:
         return self.run_stripe_response(request, method=self.run_delete,

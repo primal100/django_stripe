@@ -18,6 +18,12 @@ class SubscriptionModifySerializer(serializers.Serializer):
     default_payment_method = serializers.CharField(max_length=255, required=False)
     set_as_default_payment_method = serializers.BooleanField(default=False, required=False)
 
+    def validate(self, data):
+        if data['set_as_default_payment_method'] and not data.get('default_payment_method'):
+            raise serializers.ValidationError(
+                "The default_payment_method field must be set if set_as_default_payment_method is True.")
+        return data
+
 
 class SubscriptionCreateSerializer(SubscriptionModifySerializer):
     price_id: str = serializers.CharField(max_length=255, required=True)

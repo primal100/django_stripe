@@ -30,7 +30,7 @@ def test_modify_customer_on_save_email_update(user_with_customer_id, user_altern
 
 @pytest.mark.django_db
 @pytest.mark.parametrize('update_fields', [None, ('first_name',)])
-def test_modify_customer_on_save_first_name_update(user_with_customer_id, user_alternative_email, update_fields):
+def test_modify_customer_on_save_first_name_update(user_with_customer_id, update_fields):
     assert_customer_description(user_with_customer_id, "Test User")
     user_with_customer_id.first_name = "John"
     user_with_customer_id.save(update_fields=update_fields)

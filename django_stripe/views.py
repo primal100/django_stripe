@@ -9,13 +9,12 @@ from rest_framework.request import Request
 from rest_framework.views import APIView
 from . import exceptions
 import logging
-from subscriptions.exceptions import StripeWrongCustomer
 from .conf import settings
 from .forms import SubscriptionForm
 from . import serializers
 from . import payments
-from view_mixins import StripeListMixin, StripeCreateMixin, StripeCreateWithSerializerMixin, StripeModifyMixin, StripeDeleteMixin
-from typing import Dict, Any, List, Optional, Type, Iterable
+from .view_mixins import StripeListMixin, StripeCreateMixin, StripeCreateWithSerializerMixin, StripeModifyMixin, StripeDeleteMixin
+from typing import Dict, Any, List, Iterable
 
 
 logger = logging.getLogger("django_stripe")
@@ -83,8 +82,9 @@ class StripeInvoiceView(APIView, StripeListMixin):
     stripe_resource = stripe.Invoice
     status_code = status.HTTP_200_OK
     serializer_class = serializers.InvoiceSerializer
+    permission_classes = (IsAuthenticated,)
     response_keys = ('id', "amount_due", "amount_paid", "amount_remaining", "billing_reason",
-                     "created","hosted_invoice_url", "invoice_pdf", "subscription")
+                     "created","hosted_invoice_url", "invoice_pdf", "next_payment_attempt", "status", "subscription")
 
     @property
     def name_in_errors(self) -> str:
@@ -126,7 +126,11 @@ class StripeSubscriptionView(APIView, StripeListMixin, StripeCreateWithSerialize
     }
     permission_classes = (IsAuthenticatedOrReadOnly,)
     response_keys = ('id', 'cancel_at', 'current_period_end', 'current_period_start', 'days_until_due',
-                     'latest_invoice', 'start_date', 'status', 'trial_end', 'trial_start')
+                     'default_payment_method', 'latest_invoice', 'start_date', 'status', 'trial_end', 'trial_start')
+
+    @property
+    def name_in_errors(self) -> str:
+        return self.stripe_resource.__name__.lower()
 
     def create(self, request, **data) -> Dict[str, Any]:
         return payments.create_subscription(request.user, **data)

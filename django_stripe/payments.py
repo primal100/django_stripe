@@ -155,8 +155,10 @@ def create_subscription(user, price_id: str,
 @subscriptions.decorators.customer_id_required
 def modify_subscription(user, id: str, set_as_default_payment_method: bool = False,
                         **kwargs) -> stripe.Subscription:
-    return subscriptions.modify_subscription(user, id, set_as_default_payment_method=set_as_default_payment_method,
-                                             **kwargs)
+    subscription = subscriptions.modify_subscription(user, id, set_as_default_payment_method=set_as_default_payment_method,
+                                                     **kwargs)
+    signals.subscription_modified.send(sender=user, subscription=subscription)
+    return subscription
 
 
 @get_actual_user

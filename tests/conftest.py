@@ -201,6 +201,13 @@ def authenticated_client_second_user(api_client, second_user):
     return api_client
 
 
+@pytest.fixture(params=[('no-user', 'second-user')])
+def authenticated_client_no_user_or_second_user(request, api_client, second_user):
+    if request.param == 'second-user':
+        api_client.force_login(second_user)
+    return api_client
+
+
 @pytest.fixture
 def authenticated_client_with_without_customer_id(api_client, user_with_and_without_customer_id):
     api_client.force_login(user_with_and_without_customer_id)
@@ -275,6 +282,32 @@ def non_existing_payment_method_id(user_with_customer_id) -> str:
 @pytest.fixture
 def subscription(user_with_customer_id, stripe_price_id, default_payment_method_id) -> stripe.Subscription:
     return subscriptions.create_subscription(user_with_customer_id, stripe_price_id)
+
+
+@pytest.fixture
+def non_existing_subscription_id(user_with_customer_id) -> str:
+    return 'sub_ABCD1234'
+
+
+def get_no_such_subscription_error(subscription_id) -> Dict[str, str]:
+    return {'detail': f"No such subscription: '{subscription_id}'"}
+
+
+@pytest.fixture
+def no_such_subscription_error(non_existing_subscription_id) -> Dict[str, str]:
+    return get_no_such_subscription_error(non_existing_subscription_id)
+
+
+@pytest.fixture
+def not_owned_subscription_error(subscription) -> Dict[str, str]:
+    return get_no_such_subscription_error(subscription['id'])
+
+
+@pytest.fixture(params=[('no-filters', 'all-filters')])
+def invoice_filters(request, subscription) -> Dict[str, Any]:
+    if request.param == 'no-filters':
+        return {}
+    return {'subscription': subscription['id'], 'status': 'paid'}
 
 
 @pytest.fixture
@@ -510,14 +543,23 @@ def expected_subscription_products_and_prices_unsubscribed(stripe_subscription_p
 
 
 @pytest.fixture
-def subscription_response() -> Dict[str, Any]:
+def subscription_response(default_payment_method_id) -> Dict[str, Any]:
     """current_period_end, current_period_start, id, latest_invoice and start_date
     have been removed as they are not consistent values"""
     return {'cancel_at': None,
             'days_until_due': None,
+            'default_payment_method': default_payment_method_id,
             'status': 'active',
             'trial_end': None,
             'trial_start': None}
+
+
+@pytest.fixture
+def subscription_response_alternative_payment_method(subscription_response, payment_method_id) -> Dict[str, Any]:
+    """current_period_end, current_period_start, id, latest_invoice and start_date
+    have been removed as they are not consistent values"""
+    subscription_response['default_payment_method'] = payment_method_id
+    return subscription_response
 
 
 @pytest.fixture
@@ -561,6 +603,30 @@ def non_existing_payment_method_error_2(non_existing_payment_method_id) -> Dict[
 @pytest.fixture
 def non_existing_payment_method_error_other_user(default_payment_method_id) -> Dict[str, str]:
     return get_payment_method_error(default_payment_method_id)
+
+
+@pytest.fixture
+def no_default_payment_method_error() -> Dict[str, str]:
+    return {'detail': 'This customer has no attached payment source or default payment method.'}
+
+
+@pytest.fixture
+def no_default_payment_method_to_set_as_default_error() -> Dict[str, List[str]]:
+    return {'non_field_errors': ['The default_payment_method field must be set if set_as_default_payment_method is True.']}
+
+
+@pytest.fixture
+def customer_default_payment_method_or_none(request, payment_method_id) -> Optional[str]:
+    if request.param == 'payment_method_id':
+        return payment_method_id
+    return None
+
+
+@pytest.fixture
+def customer_default_payment_methods(request, default_payment_method_id, payment_method_id) -> Optional[str]:
+    if request.param == 'default_payment_method_id':
+        return default_payment_method_id
+    return payment_method_id
 
 
 @pytest.fixture
