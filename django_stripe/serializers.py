@@ -31,7 +31,15 @@ class SubscriptionCreateSerializer(SubscriptionModifySerializer):
 
 class SubscriptionListSerializer(serializers.Serializer):
     price_id: str = serializers.CharField(max_length=255, required=False)
-    active = serializers.BooleanField(required=False)
+    status = serializers.ChoiceField(required=False, choices=(
+        ('incomplete', 'incomplete'),
+        ('incomplete_expired', 'incomplete_expired'),
+         ('trialing', 'trialing'),
+         ('active', 'active'),
+         ('past_due', 'past_due'),
+         ('canceled', 'canceled'),
+         ('unpaid', 'unpaid')
+    ))
 
 
 class InvoiceSerializer(serializers.Serializer):

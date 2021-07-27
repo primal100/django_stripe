@@ -124,7 +124,7 @@ def test_price_list_subscribed(user_with_customer_id, stripe_subscription_produc
 def test_price_list_unsubscribed(no_user_and_user_with_and_without_customer_id, stripe_subscription_product_id,
                                  expected_subscription_prices_unsubscribed):
     result = payments.get_prices(no_user_and_user_with_and_without_customer_id,
-                                              product=stripe_subscription_product_id)
+                                 product=stripe_subscription_product_id)
     assert result == expected_subscription_prices_unsubscribed
 
 

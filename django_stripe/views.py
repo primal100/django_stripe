@@ -125,8 +125,10 @@ class StripeSubscriptionView(APIView, StripeListMixin, StripeCreateWithSerialize
         'POST': serializers.SubscriptionCreateSerializer
     }
     permission_classes = (IsAuthenticatedOrReadOnly,)
-    response_keys = ('id', 'cancel_at', 'current_period_end', 'current_period_start', 'days_until_due',
-                     'default_payment_method', 'latest_invoice', 'start_date', 'status', 'trial_end', 'trial_start')
+    key_rename = {'plan__id': 'price'}
+    response_keys = ('id', 'created', 'plan__product', 'plan__id', 'cancel_at', 'current_period_end',
+                     'current_period_start', 'days_until_due', 'default_payment_method', 'latest_invoice',
+                     'start_date', 'status', 'trial_end', 'trial_start')
 
     @property
     def name_in_errors(self) -> str:

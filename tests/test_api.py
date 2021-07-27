@@ -456,23 +456,16 @@ def test_non_existing_invoice(authenticated_client_with_customer_id, non_existin
 
 
 @pytest.mark.django_db
-def test_list_subscriptions():
-    pass
+def test_list_subscriptions(authenticated_client_with_customer_id, subscription):
+    response = make_request(authenticated_client_with_customer_id.get, "subscriptions", 200)
+    assert response.data == []
 
 
 @pytest.mark.django_db
-def test_get_one_subscriptions():
-    pass
-
-
-@pytest.mark.django_db
-def test_update_subscription():
-    pass
-
-
-@pytest.mark.django_db
-def test_cancel_subscription():
-    pass
+def test_get_one_subscription(authenticated_client_with_customer_id, subscription):
+    response = make_request(authenticated_client_with_customer_id.get, "subscriptions", 200,
+                            url_params={'id': subscription['id']})
+    assert response.data == []
 
 
 @pytest.mark.django_db

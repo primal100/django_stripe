@@ -6,19 +6,20 @@ from .conf import settings
 from rest_framework.exceptions import NotAuthenticated
 from . import signals
 from .utils import get_actual_user, user_description
-from typing import List, Dict, Any, Callable, Generator, Optional
+from typing import List, Dict, Any, Callable, Generator, Optional, Type
+from .types import DjangoUserProtocol
 
 
 def add_stripe_customer_if_not_existing(f):
     @wraps(f)
-    def wrapper(user, *args, **kwargs):
+    def wrapper(user: DjangoUserProtocol, *args, **kwargs):
         user = create_customer(user)
         return f(user, *args, **kwargs)
     return wrapper
 
 
 @get_actual_user
-def create_customer(user, **kwargs):
+def create_customer(user: DjangoUserProtocol, **kwargs):
     kwargs = kwargs or {}
     if not user or not user.is_authenticated:
         raise NotAuthenticated('This stripe method requires a logged in user')
@@ -32,7 +33,7 @@ def create_customer(user, **kwargs):
 
 @get_actual_user
 @subscriptions.decorators.customer_id_required
-def modify_customer(user, **kwargs) -> stripe.Customer:
+def modify_customer(user: DjangoUserProtocol, **kwargs) -> stripe.Customer:
     customer = stripe.Customer.modify(user.stripe_customer_id, **kwargs)
     signals.customer_modified.send(sender=user, customer=customer)
     return customer
@@ -40,7 +41,8 @@ def modify_customer(user, **kwargs) -> stripe.Customer:
 
 @get_actual_user
 @subscriptions.decorators.customer_id_required
-def modify_payment_method(user, id: str, set_as_default: bool = False, **kwargs) -> stripe.PaymentMethod:
+def modify_payment_method(user: DjangoUserProtocol, id: str, set_as_default: bool = False,
+                          **kwargs) -> stripe.PaymentMethod:
     if set_as_default:
         modify_customer(user, invoice_settings={
             'default_payment_method': id})
@@ -162,14 +164,14 @@ def modify_subscription(user, id: str, set_as_default_payment_method: bool = Fal
 
 
 @get_actual_user
-def list_customer_resource(user, obj_cls: Any, **kwargs) -> List[Dict[str, Any]]:
+def list_customer_resource(user, obj_cls: Type, **kwargs) -> List[Dict[str, Any]]:
     if not user or not user.stripe_customer_id:
         return []
     return obj_cls.list(customer=user.stripe_customer_id, **kwargs)['data']
 
 
 @get_actual_user
-def retrieve(user, obj_cls: Any, obj_id: str) -> Dict[str, Any]:
+def retrieve(user: DjangoUserProtocol, obj_cls: Type, obj_id: str):
     return subscriptions.retrieve(user, obj_cls, obj_id)
 
 
@@ -183,7 +185,7 @@ def delete(user, obj_cls: Any, obj_id: str) -> Dict[str, Any]:
 
 @get_actual_user
 @subscriptions.decorators.customer_id_required
-def modify(user, obj_cls: Any, obj_id: str, **kwargs: Dict[str, Any]) -> Dict[str, Any]:
+def modify(user: DjangoUserProtocol, obj_cls: Type, obj_id: str, **kwargs: Dict[str, Any]):
     obj = subscriptions.modify(user, obj_cls, obj_id, **kwargs)
     signals.send_signal_on_modify(user, obj_cls, obj)
     return obj

@@ -4,7 +4,8 @@ import stripe
 
 
 driver_in_sys_args = any('--driver' in arg.lower() for arg in sys.argv)
-pytestmark = pytest.mark.skipif(not driver_in_sys_args, reason="Skipped as --driver was not provided in the cli arguments")
+pytestmark = pytest.mark.skipif(not driver_in_sys_args,
+                                reason="Skipped as --driver was not provided in the cli arguments")
 
 
 def test_checkout(checkout_session_data, selenium_go_to_checkout):

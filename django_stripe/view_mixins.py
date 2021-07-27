@@ -26,6 +26,7 @@ class StripeViewMixin(Protocol):
     status_code: int = status.HTTP_200_OK
     response_keys: tuple = ("id", "created")
     response_keys_exclude: tuple = None
+    key_rename: dict = {}
 
     def make_request(self, request: Request, **data) -> DataType: ...
 
@@ -33,12 +34,23 @@ class StripeViewMixin(Protocol):
     def name_in_errors(self) -> str:
         return self.stripe_resource.__name__
 
+    def get_key(self, key: str) -> str:
+        return self.key_rename.get(key, key.split('__')[-1])
+
+    @staticmethod
+    def get_value(item: Dict[str, Any], key: str) -> Any:
+        value = item
+        for k in key.split("__"):
+            value = value[k]
+        return value
+
     def make_response(self, item: Dict[str, Any]) -> Dict[str, Any]:
         if self.response_keys_exclude:
             return {k: item[k] for k in item.keys() if k not in self.response_keys_exclude}
         if self.response_keys:
-            return {k: item[k] for k in self.response_keys}
+            return {self.get_key(k): self.get_value(item, k) for k in self.response_keys}
         return item
+
 
     def run_stripe(self, request: Request, method: Callable = None, **data) -> DataType:
         method = method or self.make_request
@@ -122,7 +134,7 @@ class StripeListMixin(StripeViewWithSerializerMixin, Protocol):
     def get(self, request: Request, **kwargs) -> Response:
         if kwargs:
             return self.run_stripe_response(request, method=self.get_one, **kwargs)
-        return self.run_serialized_stripe_response(request, method=self.get_list)
+        return self.run_serialized_stripe_response(request, method=self.get_list, status_code=status.HTTP_200_OK)
 
 
 class StripeCreateMixin(StripeViewMixin, Protocol):
