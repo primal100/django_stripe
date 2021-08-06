@@ -73,8 +73,8 @@ def test_unauthenticated(api_client, method, view, price_id_as_url_params, strip
 
 
 @pytest.mark.django_db
-def test_price_list(client_no_user_and_user_with_and_without_stripe_id, expected_subscription_prices_unsubscribed, stripe_subscription_product_id,
-                    stripe_price_currency):
+def test_price_list(client_no_user_and_user_with_and_without_stripe_id, expected_subscription_prices_unsubscribed,
+                    stripe_subscription_product_id, stripe_price_currency):
     response = make_request(client_no_user_and_user_with_and_without_stripe_id.get, 'prices', 200,
                             product=stripe_subscription_product_id,
                             currency=stripe_price_currency)
@@ -173,6 +173,20 @@ def test_get_one_payment_method(authenticated_client_with_customer_id, default_p
 
 
 @pytest.mark.django_db
+def test_payment_method_list_none_for_user(authenticated_client_second_user, default_payment_method_id):
+    response = make_request(authenticated_client_second_user.get, "payment-methods", 200)
+    assert response.data == []
+
+
+@pytest.mark.django_db
+def test_payment_method_get_one_wrong_user(authenticated_client_second_user, default_payment_method_id,
+                                           non_existing_payment_method_error_other_user):
+    response = make_request(authenticated_client_second_user.get, "payment-methods", 500,
+                            url_params={'id': default_payment_method_id})
+    assert response.data == non_existing_payment_method_error_other_user
+
+
+@pytest.mark.django_db
 def test_change_default_payment_method(authenticated_client_with_customer_id,
                                        user_with_customer_id,
                                        default_payment_method_from_api,
@@ -237,8 +251,8 @@ def test_detach_other_user_payment_method(authenticated_client_second_user,
                          ({'set_as_default_payment_method': True}, 'payment_method_id')],
                          indirect=('customer_default_payment_method_or_none',))
 def test_new_subscription(authenticated_client_with_customer_id, stripe_price_id, stripe_subscription_product_id,
-                          payment_method_id, user_with_customer_id, subscription_response, data,
-                          customer_default_payment_method_or_none):
+                          payment_method_id, user_with_customer_id, new_subscription_response_alternative_payment_method,
+                          data, customer_default_payment_method_or_none):
     response = make_request(authenticated_client_with_customer_id.post, "subscriptions", 201,
                             signal=signals.subscription_created, price_id=stripe_price_id,
                             default_payment_method=payment_method_id, **data)
@@ -247,7 +261,8 @@ def test_new_subscription(authenticated_client_with_customer_id, stripe_price_id
     assert response.data.pop('id') is not None
     assert response.data.pop('latest_invoice') is not None
     assert response.data.pop('start_date') is not None
-    assert response.data == subscription_response
+    assert response.data.pop('created') is not None
+    assert response.data == new_subscription_response_alternative_payment_method
     response = subscriptions.is_subscribed_and_cancelled_time(user_with_customer_id, stripe_subscription_product_id)
     assert response['subscribed'] is True
     assert response['cancel_at'] is None
@@ -311,11 +326,11 @@ def test_modify_subscription(authenticated_client_with_customer_id, stripe_subsc
     response = make_request(authenticated_client_with_customer_id.put, "subscriptions", 200,
                             signal=signals.subscription_modified, url_params={'id': subscription['id']},
                             default_payment_method=payment_method_id, **data)
-    assert response.data.pop('current_period_end') is not None
     assert response.data.pop('current_period_start') is not None
     assert response.data.pop('id') is not None
     assert response.data.pop('latest_invoice') is not None
     assert response.data.pop('start_date') is not None
+    assert response.data.pop('created') is not None
     assert response.data == subscription_response_alternative_payment_method
     response = subscriptions.is_subscribed_and_cancelled_time(user_with_customer_id, stripe_subscription_product_id)
     assert response['subscribed'] is True
@@ -327,9 +342,9 @@ def test_modify_subscription(authenticated_client_with_customer_id, stripe_subsc
 @pytest.mark.django_db
 def test_modify_subscription_change_default_payment_method_with_no_payment_method(
         authenticated_client_with_customer_id, subscription, default_payment_method_id,
-        user_with_customer_id, no_default_payment_method_to_set_as_default_error):
+        user_with_customer_id, no_default_payment_method_to_set_as_default_error, stripe_price_id):
     response = make_request(authenticated_client_with_customer_id.post, "subscriptions", 400,
-                            set_as_default_payment_method=True)
+                            price_id=stripe_price_id, set_as_default_payment_method=True)
     assert response.data == no_default_payment_method_to_set_as_default_error
     customer = stripe.Customer.retrieve(user_with_customer_id.stripe_customer_id)
     assert customer['invoice_settings']['default_payment_method'] == default_payment_method_id
@@ -397,6 +412,59 @@ def test_delete_other_user_subscription(authenticated_client_second_user, user_w
 
 
 @pytest.mark.django_db
+def test_list_subscriptions(authenticated_client_with_customer_id, subscription, subscription_response):
+    response = make_request(authenticated_client_with_customer_id.get, "subscriptions", 200)
+    sub = response.data[0]
+    assert sub.pop('current_period_end') is not None
+    assert sub.pop('current_period_start') is not None
+    assert sub.pop('id') is not None
+    assert sub.pop('latest_invoice') is not None
+    assert sub.pop('start_date') is not None
+    assert sub.pop('created') is not None
+    assert response.data == [sub]
+
+
+@pytest.mark.django_db
+def test_get_one_subscription(authenticated_client_with_customer_id, subscription, subscription_response):
+    response = make_request(authenticated_client_with_customer_id.get, "subscriptions", 200,
+                            url_params={'id': subscription['id']})
+    assert response.data.pop('current_period_start') is not None
+    assert response.data.pop('id') is not None
+    assert response.data.pop('latest_invoice') is not None
+    assert response.data.pop('start_date') is not None
+    assert response.data.pop('created') is not None
+    assert response.data == subscription_response
+
+
+@pytest.mark.django_db
+def test_subscription_list_none_for_user(authenticated_client_second_user, subscription):
+    response = make_request(authenticated_client_second_user.get, "subscriptions", 200)
+    assert response.data == []
+
+
+@pytest.mark.django_db
+def test_subscription_get_one_wrong_user(authenticated_client_second_user, subscription, subscription_not_owned_error):
+    response = make_request(authenticated_client_second_user.get, "subscriptions", 500,
+                            url_params={'id': subscription['id']})
+    assert response.data == subscription_not_owned_error
+
+
+@pytest.mark.django_db
+def test_view_subscribed_permission():
+    pass
+
+
+@pytest.mark.django_db
+def test_view_not_subscribed_permission():
+    pass
+
+
+@pytest.mark.django_db
+def test_check_subscription():
+    pass
+
+
+@pytest.mark.django_db
 def test_invoice_list(authenticated_client_with_customer_id, invoice_filters):
     response = make_request(authenticated_client_with_customer_id.get, "invoices", 200, **invoice_filters)
     invoice = response.data[0]
@@ -453,36 +521,3 @@ def test_non_existing_invoice(authenticated_client_with_customer_id, non_existin
     response = make_request(authenticated_client_with_customer_id.get, "invoices", 500,
                             url_params={'id': non_existing_invoice_id})
     assert response.data == invoice_not_exist_error
-
-
-@pytest.mark.django_db
-def test_list_subscriptions(authenticated_client_with_customer_id, subscription):
-    response = make_request(authenticated_client_with_customer_id.get, "subscriptions", 200)
-    assert response.data == []
-
-
-@pytest.mark.django_db
-def test_get_one_subscription(authenticated_client_with_customer_id, subscription):
-    response = make_request(authenticated_client_with_customer_id.get, "subscriptions", 200,
-                            url_params={'id': subscription['id']})
-    assert response.data == []
-
-
-@pytest.mark.django_db
-def test_check_subscription():
-    pass
-
-
-@pytest.mark.django_db
-def test_view_subscribed_permission():
-    pass
-
-
-@pytest.mark.django_db
-def test_view_not_subscribed_permission():
-    pass
-
-
-@pytest.mark.django_db
-def test_user_change_email():
-    pass

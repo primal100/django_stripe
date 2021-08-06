@@ -133,7 +133,7 @@ class StripeListMixin(StripeViewWithSerializerMixin, Protocol):
 
     def get(self, request: Request, **kwargs) -> Response:
         if kwargs:
-            return self.run_stripe_response(request, method=self.get_one, **kwargs)
+            return self.run_stripe_response(request, method=self.get_one, status_code=status.HTTP_200_OK, **kwargs)
         return self.run_serialized_stripe_response(request, method=self.get_list, status_code=status.HTTP_200_OK)
 
 

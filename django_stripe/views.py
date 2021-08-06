@@ -98,7 +98,7 @@ class StripePaymentMethodView(APIView, StripeListMixin, StripeModifyMixin, Strip
     }
     modify_serializer_class = serializers.PaymentMethodModifySerializer
     status_code = status.HTTP_200_OK
-    permission_classes = (IsAuthenticatedOrReadOnly,)
+    permission_classes = (IsAuthenticated,)
     response_keys_exclude = ('customer', 'livemode', 'metadata', 'object')
     order_by = ('default', 'created', 'id')
 
@@ -124,7 +124,7 @@ class StripeSubscriptionView(APIView, StripeListMixin, StripeCreateWithSerialize
         'PUT': serializers.SubscriptionModifySerializer,
         'POST': serializers.SubscriptionCreateSerializer
     }
-    permission_classes = (IsAuthenticatedOrReadOnly,)
+    permission_classes = (IsAuthenticated,)
     key_rename = {'plan__id': 'price'}
     response_keys = ('id', 'created', 'plan__product', 'plan__id', 'cancel_at', 'current_period_end',
                      'current_period_start', 'days_until_due', 'default_payment_method', 'latest_invoice',

@@ -252,7 +252,7 @@ def default_payment_method_for_customer(user_with_customer_id) -> stripe.Payment
 
 
 @pytest.fixture
-def default_payment_method_retrieved(default_payment_method_from_api) -> stripe.PaymentMethod:
+def default_payment_method_retrieved(default_payment_method_from_api) -> Dict[str, Any]:
     del default_payment_method_from_api['default']
     return default_payment_method_from_api
 
@@ -386,7 +386,13 @@ def stripe_unsubscribed_price_id(stripe_unsubscribed_product_id, stripe_price_cu
 
 
 @pytest.fixture
-def expected_subscription_prices(stripe_subscription_product_id, stripe_price_id, stripe_price_currency) -> List:
+def subscription_current_period_end(subscription) -> int:
+    return subscription.current_period_end
+
+
+@pytest.fixture
+def expected_subscription_prices(stripe_subscription_product_id, stripe_price_id,
+                                 stripe_price_currency, subscription_current_period_end) -> List:
     return [
         {'id': stripe_price_id,
          'recurring': {
@@ -403,7 +409,8 @@ def expected_subscription_prices(stripe_subscription_product_id, stripe_price_id
          'nickname': None,
          'metadata': {},
          'product': stripe_subscription_product_id,
-         'subscription_info': {'subscribed': True, 'cancel_at': None}}]
+         'subscription_info': {
+             'subscribed': True, 'current_period_end': subscription_current_period_end, 'cancel_at': None}}]
 
 
 @pytest.fixture
@@ -425,7 +432,7 @@ def expected_subscription_prices_unsubscribed(stripe_subscription_product_id, st
          'nickname': None,
          'metadata': {},
          'product': stripe_subscription_product_id,
-         'subscription_info': {'subscribed': False, 'cancel_at': None}}]
+         'subscription_info': {'subscribed': False, 'current_period_end': None, 'cancel_at': None}}]
 
 
 @pytest.fixture
@@ -434,7 +441,7 @@ def expected_subscription_products_and_prices(stripe_subscription_product_id, st
                                               unsubscribed_product_name, stripe_unsubscribed_price_id,
                                               stripe_subscription_product_url,
                                               stripe_unsubscribed_product_url,
-                                              stripe_price_currency) -> List:
+                                              stripe_price_currency, subscription_current_period_end) -> List:
     return [
         {'id': stripe_unsubscribed_product_id,
          'images': [],
@@ -449,12 +456,12 @@ def expected_subscription_products_and_prices(stripe_subscription_product_id, st
                                 'interval_count': 1,
                                 'trial_period_days': None,
                                 'usage_type': 'licensed'},
-                  'subscription_info': {'cancel_at': None, 'subscribed': False},
+                  'subscription_info': {'cancel_at': None, 'current_period_end': None, 'subscribed': False},
                   'type': 'recurring',
                   'unit_amount': 9999,
                   'unit_amount_decimal': '9999'}],
          'shippable': None,
-         'subscription_info': {'cancel_at': None, 'subscribed': False},
+         'subscription_info': {'cancel_at': None, 'current_period_end': None, 'subscribed': False},
          'type': 'service',
          'unit_label': None,
          'url': stripe_unsubscribed_product_url},
@@ -480,18 +487,20 @@ def expected_subscription_products_and_prices(stripe_subscription_product_id, st
                      'unit_amount_decimal': '129',
                      'nickname': None,
                      'metadata': {},
-                     'subscription_info': {'subscribed': True, 'cancel_at': None}}],
-         'subscription_info': {'subscribed': True, 'cancel_at': None}}
+                     'subscription_info': {
+                         'subscribed': True, 'current_period_end': subscription_current_period_end, 'cancel_at': None}}],
+         'subscription_info': {
+             'subscribed': True, 'current_period_end': subscription_current_period_end, 'cancel_at': None}}
     ]
 
 
 @pytest.fixture
 def expected_subscription_products_and_prices_unsubscribed(stripe_subscription_product_id, stripe_price_id,
-                                              subscribed_product_name, stripe_unsubscribed_product_id,
-                                              unsubscribed_product_name, stripe_unsubscribed_price_id,
-                                              stripe_subscription_product_url,
-                                              stripe_unsubscribed_product_url,
-                                              stripe_price_currency) -> List:
+                                                           subscribed_product_name, stripe_unsubscribed_product_id,
+                                                           unsubscribed_product_name, stripe_unsubscribed_price_id,
+                                                           stripe_subscription_product_url,
+                                                           stripe_unsubscribed_product_url,
+                                                           stripe_price_currency) -> List:
     return [
         {'id': stripe_unsubscribed_product_id,
          'images': [],
@@ -506,12 +515,12 @@ def expected_subscription_products_and_prices_unsubscribed(stripe_subscription_p
                                 'interval_count': 1,
                                 'trial_period_days': None,
                                 'usage_type': 'licensed'},
-                  'subscription_info': {'cancel_at': None, 'subscribed': False},
+                  'subscription_info': {'cancel_at': None, 'current_period_end': None, 'subscribed': False},
                   'type': 'recurring',
                   'unit_amount': 9999,
                   'unit_amount_decimal': '9999'}],
          'shippable': None,
-         'subscription_info': {'cancel_at': None, 'subscribed': False},
+         'subscription_info': {'cancel_at': None, 'current_period_end': None, 'subscribed': False},
          'type': 'service',
          'unit_label': None,
          'url': stripe_unsubscribed_product_url},
@@ -537,18 +546,21 @@ def expected_subscription_products_and_prices_unsubscribed(stripe_subscription_p
                      'unit_amount_decimal': '129',
                      'nickname': None,
                      'metadata': {},
-                     'subscription_info': {'subscribed': False, 'cancel_at': None}}],
-         'subscription_info': {'subscribed': False, 'cancel_at': None}}
+                     'subscription_info': {'subscribed': False, 'current_period_end': None, 'cancel_at': None}}],
+         'subscription_info': {'subscribed': False, 'current_period_end': None, 'cancel_at': None}}
     ]
 
 
 @pytest.fixture
-def subscription_response(default_payment_method_id) -> Dict[str, Any]:
-    """current_period_end, current_period_start, id, latest_invoice and start_date
+def subscription_response(stripe_price_id, stripe_subscription_product_id, subscription_current_period_end) -> Dict[str, Any]:
+    """current_period_start, id, latest_invoice and start_date
     have been removed as they are not consistent values"""
     return {'cancel_at': None,
+            'current_period_end': subscription_current_period_end,
             'days_until_due': None,
-            'default_payment_method': default_payment_method_id,
+            'default_payment_method': None,
+            'price': stripe_price_id,
+            'product': stripe_subscription_product_id,
             'status': 'active',
             'trial_end': None,
             'trial_start': None}
@@ -556,10 +568,24 @@ def subscription_response(default_payment_method_id) -> Dict[str, Any]:
 
 @pytest.fixture
 def subscription_response_alternative_payment_method(subscription_response, payment_method_id) -> Dict[str, Any]:
-    """current_period_end, current_period_start, id, latest_invoice and start_date
+    """current_period_start, id, latest_invoice and start_date
     have been removed as they are not consistent values"""
     subscription_response['default_payment_method'] = payment_method_id
     return subscription_response
+
+
+@pytest.fixture
+def new_subscription_response_alternative_payment_method(payment_method_id, stripe_price_id, stripe_subscription_product_id) -> Dict[str, Any]:
+    """current_period_start, current_period_end, id, latest_invoice and start_date
+    have been removed as they are not consistent values"""
+    return {'cancel_at': None,
+            'days_until_due': None,
+            'default_payment_method': payment_method_id,
+            'price': stripe_price_id,
+            'product': stripe_subscription_product_id,
+            'status': 'active',
+            'trial_end': None,
+            'trial_start': None}
 
 
 @pytest.fixture
@@ -584,6 +610,15 @@ def invoice_not_owned_error(invoice) -> Dict[str, str]:
 @pytest.fixture
 def invoice_not_exist_error(non_existing_invoice_id) -> Dict[str, str]:
     return get_invoice_error(non_existing_invoice_id)
+
+
+def get_subscription_error(subscription_id: str) -> Dict[str, Any]:
+    return {'detail': f"No such subscription: '{subscription_id}'"}
+
+
+@pytest.fixture
+def subscription_not_owned_error(subscription) -> Dict[str, str]:
+    return get_subscription_error(subscription['id'])
 
 
 @pytest.fixture
