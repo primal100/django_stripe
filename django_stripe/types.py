@@ -1,4 +1,4 @@
-from subscriptions.types import Protocol, UserProtocol
+from subscriptions.types import Protocol, UserProtocol, ProductIsSubscribed
 
 
 class DjangoUserProtocol(UserProtocol, Protocol):
@@ -6,3 +6,7 @@ class DjangoUserProtocol(UserProtocol, Protocol):
 
     def save(self, update_fields=None, **kwargs):
         pass
+
+
+class SubscriptionInfoWithEvaluation(ProductIsSubscribed):
+    evaluation: bool

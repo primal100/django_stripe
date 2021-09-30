@@ -3,11 +3,13 @@ import subscriptions
 from subscriptions.types import PaymentMethodType
 from functools import wraps
 from .conf import settings
+from django.core.cache import caches
+from django.utils import timezone
 from rest_framework.exceptions import NotAuthenticated
 from . import signals
 from .utils import get_actual_user, user_description
 from typing import List, Dict, Any, Callable, Generator, Optional, Type
-from .types import DjangoUserProtocol
+from .types import DjangoUserProtocol, SubscriptionInfoWithEvaluation
 
 
 def add_stripe_customer_if_not_existing(f):
@@ -127,8 +129,8 @@ def list_payment_methods(user, types: List[PaymentMethodType] = None, **kwargs) 
 
 @get_actual_user
 @subscriptions.decorators.customer_id_required
-def detach_payment_method(user, id: str) -> stripe.PaymentMethod:
-    payment_method = subscriptions.detach_payment_method(user, id)
+def detach_payment_method(user, pm_id: str) -> stripe.PaymentMethod:
+    payment_method = subscriptions.detach_payment_method(user, pm_id)
     signals.payment_method_detached.send(sender=user, payment_methods=[payment_method])
     return payment_method
 
@@ -155,9 +157,9 @@ def create_subscription(user, price_id: str,
 
 @get_actual_user
 @subscriptions.decorators.customer_id_required
-def modify_subscription(user, id: str, set_as_default_payment_method: bool = False,
+def modify_subscription(user, sub_id: str, set_as_default_payment_method: bool = False,
                         **kwargs) -> stripe.Subscription:
-    subscription = subscriptions.modify_subscription(user, id, set_as_default_payment_method=set_as_default_payment_method,
+    subscription = subscriptions.modify_subscription(user, sub_id, set_as_default_payment_method=set_as_default_payment_method,
                                                      **kwargs)
     signals.subscription_modified.send(sender=user, subscription=subscription)
     return subscription
@@ -189,3 +191,30 @@ def modify(user: DjangoUserProtocol, obj_cls: Type, obj_id: str, **kwargs: Dict[
     obj = subscriptions.modify(user, obj_cls, obj_id, **kwargs)
     signals.send_signal_on_modify(user, obj_cls, obj)
     return obj
+
+
+@get_actual_user
+def is_subscribed_and_cancelled_time(user, product_id: str = settings.STRIPE_DEFAULT_SUBSCRIPTION_PRODUCT_ID
+                                     ) -> SubscriptionInfoWithEvaluation:
+    if hasattr(user, 'allowed_access_until') and (
+            user.allowed_access_until and user.allowed_access_until >= timezone.now()):
+        return {'subscribed': True, 'cancel_at': None, 'current_period_end': int(user.allowed_access_until.timestamp()),
+                'evaluation': True, 'product_id': product_id, 'price_id': settings.STRIPE_FREE_ACCESS_PRICE_ID}
+    sub_info: SubscriptionInfoWithEvaluation = subscriptions.is_subscribed_and_cancelled_time(user, product_id)
+    sub_info['evaluation'] = False
+    return sub_info
+
+
+def is_subscribed(user, product_id: str = settings.STRIPE_DEFAULT_SUBSCRIPTION_PRODUCT_ID) -> bool:
+    return is_subscribed_and_cancelled_time(user, product_id)['subscribed']
+
+
+def is_subscribed_with_cache(user, product_id: str = settings.STRIPE_SUBSCRIPTION_PRODUCT_ID) -> bool:
+    cache = caches[settings.STRIPE_SUBSCRIPTION_CACHE_NAME]
+    cache_key = f'is_subscribed_{user.id}_{product_id}'
+    subscribed = cache.get(cache_key)
+    if subscribed is None:
+        subscribed = is_subscribed(user, product_id)
+        if subscribed:
+            cache.set(cache_key, subscribed, timeout=settings.STRIPE_SUBSCRIPTION_CHECK_CACHE_TIMEOUT_SECONDS)
+    return subscribed

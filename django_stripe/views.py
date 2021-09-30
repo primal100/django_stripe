@@ -4,7 +4,7 @@ from django.views.generic import FormView, RedirectView, TemplateView
 from django.contrib.auth.mixins import LoginRequiredMixin
 from stripe.error import StripeError
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.views import APIView
 from . import exceptions
@@ -60,8 +60,8 @@ class StripePricesView(APIView, StripeListMixin):
     def list(self, request: Request, **kwargs) -> List[Dict[str, Any]]:
         return payments.get_prices(request.user, **kwargs)
 
-    def retrieve(self, request: Request, id: str) -> Dict[str, Any]:
-        return payments.retrieve_price(request.user, id)
+    def retrieve(self, request: Request, price_id: str) -> Dict[str, Any]:
+        return payments.retrieve_price(request.user, price_id)
 
 
 class StripeProductsView(APIView, StripeListMixin):
@@ -74,8 +74,8 @@ class StripeProductsView(APIView, StripeListMixin):
     def list(self, request: Request, **kwargs) -> List[Dict[str, Any]]:
         return payments.get_products(request.user, **kwargs)
 
-    def retrieve(self, request: Request, id: str) -> Dict[str, Any]:
-        return payments.retrieve_product(request.user, id)
+    def retrieve(self, request: Request, product_id: str) -> Dict[str, Any]:
+        return payments.retrieve_product(request.user, product_id)
 
 
 class StripeInvoiceView(APIView, StripeListMixin):
@@ -137,8 +137,8 @@ class StripeSubscriptionView(APIView, StripeListMixin, StripeCreateWithSerialize
     def create(self, request, **data) -> Dict[str, Any]:
         return payments.create_subscription(request.user, **data)
 
-    def modify(self, request, id: str, **data) -> Dict[str, Any]:
-        return payments.modify_subscription(request.user, id, **data)
+    def modify(self, request, sub_id: str, **data) -> Dict[str, Any]:
+        return payments.modify_subscription(request.user, sub_id, **data)
 
 
 class SubscriptionFormView(LoginRequiredMixin, FormView):
