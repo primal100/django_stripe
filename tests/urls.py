@@ -13,10 +13,16 @@ Including another URLconf
     1. Import the include() function: from django.urls import include, path
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
+from django.contrib import admin
 from django.urls import path, include
-from django.conf.urls import url
+from django.urls import re_path
+from django_stripe.views import GoToSetupCheckoutView, GoToCheckoutView, GoToBillingPortalView
 
 urlpatterns = [
+    path('admin/', admin.site.urls),
     path('api/', include("django_stripe.urls")),
-    url(r'^api-auth/', include('rest_framework.urls')),
+    re_path(r'^api-auth/', include('rest_framework.urls')),
+    re_path('^checkout/(?P<price_id>.*)/', GoToCheckoutView.as_view(), name='go-to-checkout'),
+    re_path(r'^setup-checkout/(?:/(?P<subscription_id>.*)/)?', GoToSetupCheckoutView.as_view(), name='go-to-setup-checkout'),
+    re_path(r'^billing-portal/', GoToBillingPortalView.as_view(), name='go-to-billing-portal'),
 ]
