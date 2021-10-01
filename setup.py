@@ -9,6 +9,5 @@ with open('django_stripe/__init__.py') as f:
 
 setup(
     name=main_ns['app_name'],
-    version=main_ns['__version__'],
-    packages=main_ns['app_name']
+    version=main_ns['__version__']
 )
