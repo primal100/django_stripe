@@ -2,8 +2,7 @@ import pytest
 import stripe
 
 from django_stripe.tests import assert_customer_id_exists, make_request
-from django_stripe import signals
-import subscriptions
+from django_stripe import payments, signals
 
 
 @pytest.mark.django_db
@@ -107,7 +106,7 @@ def test_price_list_non_existing_currency(client, non_existing_currency, non_exi
 def test_price_get_one(client_no_user_and_user_with_and_without_stripe_id,
                        expected_subscription_prices_unsubscribed, stripe_price_id):
     response = make_request(client_no_user_and_user_with_and_without_stripe_id.get, 'prices', 200,
-                            url_params={'id': stripe_price_id})
+                            url_params={'obj_id': stripe_price_id})
     assert response.data == expected_subscription_prices_unsubscribed[0]
 
 
@@ -125,7 +124,7 @@ def test_product_list(client_no_user_and_user_with_and_without_stripe_id,
 def test_product_get_one(client_no_user_and_user_with_and_without_stripe_id,
                          expected_subscription_products_and_prices_unsubscribed, stripe_subscription_product_id):
     response = make_request(client_no_user_and_user_with_and_without_stripe_id.get, 'products', 200,
-                            url_params={'id': stripe_subscription_product_id})
+                            url_params={'obj_id': stripe_subscription_product_id})
     assert response.data == expected_subscription_products_and_prices_unsubscribed[1]
 
 
@@ -167,7 +166,7 @@ def test_list_payment_methods(authenticated_client_with_customer_id, default_pay
 @pytest.mark.django_db
 def test_get_one_payment_method(authenticated_client_with_customer_id, default_payment_method_retrieved):
     response = make_request(authenticated_client_with_customer_id.get, "payment-methods", 200,
-                            url_params={'id': default_payment_method_retrieved['id']})
+                            url_params={'obj_id': default_payment_method_retrieved['id']})
     data = response.data
     assert data == default_payment_method_retrieved
 
@@ -182,7 +181,7 @@ def test_payment_method_list_none_for_user(authenticated_client_second_user, def
 def test_payment_method_get_one_wrong_user(authenticated_client_second_user, default_payment_method_id,
                                            non_existing_payment_method_error_other_user):
     response = make_request(authenticated_client_second_user.get, "payment-methods", 500,
-                            url_params={'id': default_payment_method_id})
+                            url_params={'obj_id': default_payment_method_id})
     assert response.data == non_existing_payment_method_error_other_user
 
 
@@ -193,7 +192,7 @@ def test_change_default_payment_method(authenticated_client_with_customer_id,
                                        payment_method_from_api):
     pm_id = payment_method_from_api['id']
     response = make_request(authenticated_client_with_customer_id.put, "payment-methods", 200,
-                            url_params={'id': pm_id}, set_as_default=True)
+                            url_params={'obj_id': pm_id}, set_as_default=True)
     data = response.data
     payment_method_from_api.pop('default')
     assert data == payment_method_from_api
@@ -205,7 +204,7 @@ def test_change_default_payment_method_non_existing(authenticated_client_with_cu
                                                     non_existing_payment_method_id,
                                                     non_existing_payment_method_error_2):
     response = make_request(authenticated_client_with_customer_id.put, "payment-methods", 500,
-                            url_params={'id': non_existing_payment_method_id})
+                            url_params={'obj_id': non_existing_payment_method_id})
     assert response.data == non_existing_payment_method_error_2
 
 
@@ -214,7 +213,7 @@ def test_detach_payment_method(authenticated_client_with_customer_id,
                                payment_method_from_api,
                                default_payment_method_from_api):
     response = make_request(authenticated_client_with_customer_id.delete, "payment-methods", 204,
-                            url_params={'id': default_payment_method_from_api['id']})
+                            url_params={'obj_id': default_payment_method_from_api['id']})
     assert response.data is None
 
 
@@ -223,7 +222,7 @@ def test_detach_payment_method_all(authenticated_client_with_customer_id,
                                    payment_method_from_api,
                                    default_payment_method_from_api):
     response = make_request(authenticated_client_with_customer_id.delete, "payment-methods", 204,
-                            url_params={'id': "*"})
+                            url_params={'obj_id': "*"})
     assert response.data is None
 
 
@@ -232,7 +231,7 @@ def test_detach_no_payment_method(authenticated_client_with_customer_id,
                                   non_existing_payment_method_id,
                                   non_existing_payment_method_error_2):
     response = make_request(authenticated_client_with_customer_id.delete, "payment-methods", 500,
-                            url_params={'id': non_existing_payment_method_id})
+                            url_params={'obj_id': non_existing_payment_method_id})
     assert response.data == non_existing_payment_method_error_2
 
 
@@ -241,7 +240,7 @@ def test_detach_other_user_payment_method(authenticated_client_second_user,
                                           default_payment_method_id,
                                           non_existing_payment_method_error_other_user):
     response = make_request(authenticated_client_second_user.delete, "payment-methods", 500,
-                            url_params={'id': default_payment_method_id})
+                            url_params={'obj_id': default_payment_method_id})
     assert response.data == non_existing_payment_method_error_other_user
 
 
@@ -263,7 +262,7 @@ def test_new_subscription(authenticated_client_with_customer_id, stripe_price_id
     assert response.data.pop('start_date') is not None
     assert response.data.pop('created') is not None
     assert response.data == new_subscription_response_alternative_payment_method
-    response = subscriptions.is_subscribed_and_cancelled_time(user_with_customer_id, stripe_subscription_product_id)
+    response = payments.is_subscribed_and_cancelled_time(user_with_customer_id, stripe_subscription_product_id)
     assert response['subscribed'] is True
     assert response['cancel_at'] is None
     customer = stripe.Customer.retrieve(user_with_customer_id.stripe_customer_id)
@@ -277,7 +276,7 @@ def test_new_subscription_change_default_payment_method_with_no_payment_method(
     response = make_request(authenticated_client_with_customer_id.post, "subscriptions", 400,
                             price_id=stripe_price_id, set_as_default_payment_method=True)
     assert response.data == no_default_payment_method_to_set_as_default_error
-    response = subscriptions.is_subscribed_and_cancelled_time(user_with_customer_id, stripe_subscription_product_id)
+    response = payments.is_subscribed_and_cancelled_time(user_with_customer_id, stripe_subscription_product_id)
     assert response['subscribed'] is False
     assert response['cancel_at'] is None
     customer = stripe.Customer.retrieve(user_with_customer_id.stripe_customer_id)
@@ -308,8 +307,7 @@ def test_new_subscription_no_payment_method(authenticated_client_with_customer_i
     response = make_request(authenticated_client_with_customer_id.post, "subscriptions", 500,
                             price_id=stripe_price_id)
     assert response.data == no_default_payment_method_error
-    response = subscriptions.is_subscribed_and_cancelled_time(user_with_customer_id,
-                                                              stripe_subscription_product_id)
+    response = payments.is_subscribed_and_cancelled_time(user_with_customer_id, stripe_subscription_product_id)
     assert response['subscribed'] is False
     assert response['cancel_at'] is None
 
@@ -324,7 +322,7 @@ def test_modify_subscription(authenticated_client_with_customer_id, stripe_subsc
                              subscription_response_alternative_payment_method,
                              data, customer_default_payment_methods):
     response = make_request(authenticated_client_with_customer_id.put, "subscriptions", 200,
-                            signal=signals.subscription_modified, url_params={'id': subscription['id']},
+                            signal=signals.subscription_modified, url_params={'obj_id': subscription['id']},
                             default_payment_method=payment_method_id, **data)
     assert response.data.pop('current_period_start') is not None
     assert response.data.pop('id') is not None
@@ -332,7 +330,7 @@ def test_modify_subscription(authenticated_client_with_customer_id, stripe_subsc
     assert response.data.pop('start_date') is not None
     assert response.data.pop('created') is not None
     assert response.data == subscription_response_alternative_payment_method
-    response = subscriptions.is_subscribed_and_cancelled_time(user_with_customer_id, stripe_subscription_product_id)
+    response = payments.is_subscribed_and_cancelled_time(user_with_customer_id, stripe_subscription_product_id)
     assert response['subscribed'] is True
     assert response['cancel_at'] is None
     customer = stripe.Customer.retrieve(user_with_customer_id.stripe_customer_id)
@@ -355,7 +353,7 @@ def test_modify_subscription_non_existing_payment_method(authenticated_client_wi
                                                          non_existing_payment_method_id,
                                                          non_existing_payment_method_error_2, subscription):
     response = make_request(authenticated_client_with_customer_id.put, "subscriptions", 500,
-                            url_params={'id': subscription['id']},
+                            url_params={'obj_id': subscription['id']},
                             default_payment_method=non_existing_payment_method_id)
     assert response.data == non_existing_payment_method_error_2
 
@@ -365,7 +363,7 @@ def test_modify_non_existing_subscription(authenticated_client_with_customer_id,
                                           stripe_subscription_product_id, payment_method_id,
                                           non_existing_subscription_id, no_such_subscription_error):
     response = make_request(authenticated_client_with_customer_id.put, "subscriptions", 500,
-                            url_params={'id': non_existing_subscription_id},
+                            url_params={'obj_id': non_existing_subscription_id},
                             default_payment_method=payment_method_id)
     assert response.data == no_such_subscription_error
 
@@ -375,7 +373,7 @@ def test_modify_other_user_subscription(authenticated_client_second_user,
                                         stripe_subscription_product_id, payment_method_id,
                                         subscription, not_owned_subscription_error):
     response = make_request(authenticated_client_second_user.put, "subscriptions", 500,
-                            url_params={'id': subscription['id']},
+                            url_params={'obj_id': subscription['id']},
                             default_payment_method=payment_method_id)
     assert response.data == not_owned_subscription_error
 
@@ -384,9 +382,9 @@ def test_modify_other_user_subscription(authenticated_client_second_user,
 def test_delete_subscription(authenticated_client_with_customer_id, stripe_subscription_product_id,
                              user_with_customer_id, subscription):
     response = make_request(authenticated_client_with_customer_id.delete, "subscriptions", 204,
-                            signal=signals.subscription_cancelled, url_params={'id': subscription['id']})
+                            signal=signals.subscription_cancelled, url_params={'obj_id': subscription['id']})
     assert response.data is None
-    response = subscriptions.is_subscribed_and_cancelled_time(user_with_customer_id, stripe_subscription_product_id)
+    response = payments.is_subscribed_and_cancelled_time(user_with_customer_id, stripe_subscription_product_id)
     assert response['subscribed'] is False
     assert response['cancel_at'] is None
 
@@ -395,7 +393,7 @@ def test_delete_subscription(authenticated_client_with_customer_id, stripe_subsc
 def test_delete_non_existing_subscription(authenticated_client_with_customer_id,
                                           non_existing_subscription_id, no_such_subscription_error):
     response = make_request(authenticated_client_with_customer_id.delete, "subscriptions", 500,
-                            url_params={'id': non_existing_subscription_id})
+                            url_params={'obj_id': non_existing_subscription_id})
     assert response.data == no_such_subscription_error
 
 
@@ -404,9 +402,9 @@ def test_delete_other_user_subscription(authenticated_client_second_user, user_w
                                         stripe_subscription_product_id, payment_method_id,
                                         subscription, not_owned_subscription_error):
     response = make_request(authenticated_client_second_user.delete, "subscriptions", 500,
-                            url_params={'id': subscription['id']})
+                            url_params={'obj_id': subscription['id']})
     assert response.data == not_owned_subscription_error
-    response = subscriptions.is_subscribed_and_cancelled_time(user_with_customer_id, stripe_subscription_product_id)
+    response = payments.is_subscribed_and_cancelled_time(user_with_customer_id, stripe_subscription_product_id)
     assert response['subscribed'] is True
     assert response['cancel_at'] is None
 
@@ -427,7 +425,7 @@ def test_list_subscriptions(authenticated_client_with_customer_id, subscription,
 @pytest.mark.django_db
 def test_get_one_subscription(authenticated_client_with_customer_id, subscription, subscription_response):
     response = make_request(authenticated_client_with_customer_id.get, "subscriptions", 200,
-                            url_params={'id': subscription['id']})
+                            url_params={'obj_id': subscription['id']})
     assert response.data.pop('current_period_start') is not None
     assert response.data.pop('id') is not None
     assert response.data.pop('latest_invoice') is not None
@@ -445,23 +443,8 @@ def test_subscription_list_none_for_user(authenticated_client_second_user, subsc
 @pytest.mark.django_db
 def test_subscription_get_one_wrong_user(authenticated_client_second_user, subscription, subscription_not_owned_error):
     response = make_request(authenticated_client_second_user.get, "subscriptions", 500,
-                            url_params={'id': subscription['id']})
+                            url_params={'obj_id': subscription['id']})
     assert response.data == subscription_not_owned_error
-
-
-@pytest.mark.django_db
-def test_view_subscribed_permission():
-    pass
-
-
-@pytest.mark.django_db
-def test_view_not_subscribed_permission():
-    pass
-
-
-@pytest.mark.django_db
-def test_check_subscription():
-    pass
 
 
 @pytest.mark.django_db
@@ -501,7 +484,7 @@ def test_invoice_list_none_for_user(authenticated_client_second_user, subscripti
 @pytest.mark.django_db
 def test_invoice_get_one(authenticated_client_with_customer_id, invoice):
     response = make_request(authenticated_client_with_customer_id.get, "invoices", 200,
-                            url_params={'id': invoice['id']})
+                            url_params={'obj_id': invoice['id']})
     data = response.data
     assert data['hosted_invoice_url'] == invoice['hosted_invoice_url']
     assert tuple(data.keys()) == ('id', "amount_due", "amount_paid", "amount_remaining", "billing_reason",
@@ -512,12 +495,12 @@ def test_invoice_get_one(authenticated_client_with_customer_id, invoice):
 @pytest.mark.django_db
 def test_invoice_get_one_wrong_user(authenticated_client_second_user, invoice, invoice_not_owned_error):
     response = make_request(authenticated_client_second_user.get, "invoices", 500,
-                            url_params={'id': invoice['id']})
+                            url_params={'obj_id': invoice['id']})
     assert response.data == invoice_not_owned_error
 
 
 @pytest.mark.django_db
 def test_non_existing_invoice(authenticated_client_with_customer_id, non_existing_invoice_id, invoice_not_exist_error):
     response = make_request(authenticated_client_with_customer_id.get, "invoices", 500,
-                            url_params={'id': non_existing_invoice_id})
+                            url_params={'obj_id': non_existing_invoice_id})
     assert response.data == invoice_not_exist_error

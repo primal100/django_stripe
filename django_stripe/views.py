@@ -1,23 +1,15 @@
 import stripe
-from django.contrib import messages
-from django.views.generic import FormView, RedirectView, TemplateView
+from django.views.generic import RedirectView, TemplateView
 from django.contrib.auth.mixins import LoginRequiredMixin
-from stripe.error import StripeError
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.views import APIView
-from . import exceptions
-import logging
 from .conf import settings
-from .forms import SubscriptionForm
 from . import serializers
 from . import payments
 from .view_mixins import StripeListMixin, StripeCreateMixin, StripeCreateWithSerializerMixin, StripeModifyMixin, StripeDeleteMixin
 from typing import Dict, Any, List, Iterable
-
-
-logger = logging.getLogger("django_stripe")
 
 
 class StripePriceCheckoutView(APIView, StripeCreateMixin):
@@ -105,14 +97,14 @@ class StripePaymentMethodView(APIView, StripeListMixin, StripeModifyMixin, Strip
     def list(self, request: Request, **data) -> Iterable[stripe.PaymentMethod]:
         return payments.list_payment_methods(request.user, **data)
 
-    def modify(self, request, id: str, **data) -> Dict[str, Any]:
-        return payments.modify_payment_method(request.user, id=id, **data)
+    def modify(self, request, obj_id: str, **data) -> Dict[str, Any]:
+        return payments.modify_payment_method(request.user, obj_id=obj_id, **data)
 
-    def destroy(self, request: Request, id: str) -> None:
-        if id == "*":
+    def destroy(self, request: Request, obj_id: str) -> None:
+        if obj_id == "*":
             payments.detach_all_payment_methods(request.user)
         else:
-            payments.detach_payment_method(request.user, id)
+            payments.detach_payment_method(request.user, obj_id)
 
 
 class StripeSubscriptionView(APIView, StripeListMixin, StripeCreateWithSerializerMixin,
@@ -139,42 +131,6 @@ class StripeSubscriptionView(APIView, StripeListMixin, StripeCreateWithSerialize
 
     def modify(self, request, sub_id: str, **data) -> Dict[str, Any]:
         return payments.modify_subscription(request.user, sub_id, **data)
-
-
-class SubscriptionFormView(LoginRequiredMixin, FormView):
-    template_name = 'django_stripe/subscription_form.html'
-    form_class = SubscriptionForm
-
-    def get(self, request, *args, **kwargs):
-        if request.user and request.user.is_authenticated:
-            payments.create_customer(request.user)
-        return super().get(request, *args, **kwargs)
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        setup_intent = payments.create_setup_intent(self.request.user)
-        context['js_vars'] = {
-            'stripe_client_secret': setup_intent['client_secret'],
-            'payment_method_types': setup_intent['payment_method_types'],
-            'hide_postal_code': settings.STRIPE_CREDIT_CARD_HIDE_POSTAL_CODE,
-            'stripe_public_key': settings.STRIPE_PUBLIC_KEY
-        }
-        context['user'] = self.request.user
-        return context
-
-    def form_valid(self, form):
-        price_id = form.cleaned_data['price_id']
-        user = self.request.user
-        try:
-            sub = payments.create_subscription(user, price_id)
-            messages.success(self.request, f"Successfully subscribed to {sub['id']}")
-        except stripe.error.StripeError as e:
-            logger.exception(e, exc_info=e)
-            error = str(e)
-            request_id = exceptions.get_request_id_string(error)
-            detail = error.replace(request_id, "")
-            messages.error(self.request, detail)
-        return self.render_to_response(self.get_context_data(form=form))
 
 
 class GoToSetupCheckoutView(LoginRequiredMixin, TemplateView):

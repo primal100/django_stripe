@@ -30,5 +30,5 @@ setup(
     ],
     python_requires='>=3.6',
     setup_requires=['wheel'],
-    install_requires=["django, djangorestframework, stripe"],
+    install_requires=["django, djangorestframework, inflect, stripe"],
 )

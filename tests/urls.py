@@ -15,15 +15,14 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
-from django.conf.urls import url
-from django_stripe.views import SubscriptionFormView, GoToSetupCheckoutView, GoToCheckoutView, GoToBillingPortalView
+from django.urls import re_path
+from django_stripe.views import GoToSetupCheckoutView, GoToCheckoutView, GoToBillingPortalView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include("django_stripe.urls")),
-    url(r'^api-auth/', include('rest_framework.urls')),
-    url('^checkout/(?P<price_id>.*)/', GoToCheckoutView.as_view(), name='go-to-checkout'),
-    url(r'^setup-checkout/(?:/(?P<subscription_id>.*)/)?', GoToSetupCheckoutView.as_view(), name='go-to-setup-checkout'),
-    url(r'^billing-portal/', GoToBillingPortalView.as_view(), name='go-to-billing-portal'),
-    url(r'^subscription-form', SubscriptionFormView.as_view(), name="subscription-form"),
+    re_path(r'^api-auth/', include('rest_framework.urls')),
+    re_path('^checkout/(?P<price_id>.*)/', GoToCheckoutView.as_view(), name='go-to-checkout'),
+    re_path(r'^setup-checkout/(?:/(?P<subscription_id>.*)/)?', GoToSetupCheckoutView.as_view(), name='go-to-setup-checkout'),
+    re_path(r'^billing-portal/', GoToBillingPortalView.as_view(), name='go-to-billing-portal'),
 ]

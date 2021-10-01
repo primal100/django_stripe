@@ -230,15 +230,53 @@ def test_invoice_list_none(user_with_and_without_customer_id):
 
 
 @pytest.mark.django_db
-def test_check_subscription():
-    pass
+def test_is_subscribed(user_with_customer_id, subscription, stripe_subscription_product_id, stripe_price_id):
+    is_subscribed = payments.is_subscribed_and_cancelled_time(user_with_customer_id, stripe_subscription_product_id)
+    assert is_subscribed['subscribed'] is True
+    assert is_subscribed['cancel_at'] is None
+    assert is_subscribed['evaluation'] is False
+    assert is_subscribed['price_id'] == stripe_price_id
+    assert subscriptions.is_subscribed(user_with_customer_id, stripe_subscription_product_id)
 
 
 @pytest.mark.django_db
-def test_view_subscribed_permission():
-    pass
+def test_is_subscribed_allowed_access_until(user_allowed_access_until, subscription, stripe_subscription_product_id):
+    is_subscribed = payments.is_subscribed_and_cancelled_time(user_allowed_access_until)
+    assert is_subscribed == {'subscribed': True, 'cancel_at': None, 'current_period_end': 1924905599,
+                             'evaluation': True, 'product_id': stripe_subscription_product_id,
+                             'price_id': None}
+    assert subscriptions.is_subscribed(user_allowed_access_until, stripe_subscription_product_id)
 
 
 @pytest.mark.django_db
-def test_view_not_subscribed_permission():
-    pass
+def test_is_not_subscribed(no_user_and_user_with_and_without_customer_id, stripe_subscription_product_id, stripe_price_id):
+    is_subscribed = payments.is_subscribed_and_cancelled_time(no_user_and_user_with_and_without_customer_id,
+                                                              stripe_subscription_product_id)
+    assert is_subscribed == {'subscribed': False, 'cancel_at': None, 'current_period_end': None,
+                             'evaluation': False, 'product_id': None,
+                             'price_id': None}
+    assert subscriptions.is_subscribed(no_user_and_user_with_and_without_customer_id,
+                                       stripe_subscription_product_id) is False
+
+
+@pytest.mark.django_db
+def test_is_subscribed_with_cache(user_with_customer_id, subscription, stripe_subscription_product_id, django_cache):
+    cache_key = f'is_subscribed_{user_with_customer_id.id}_{stripe_subscription_product_id}'
+    assert django_cache.get(cache_key) is None
+    subscribed = payments.is_subscribed_with_cache(user_with_customer_id, stripe_subscription_product_id)
+    assert subscribed is True
+    assert django_cache.get(cache_key) is True
+    subscribed = payments.is_subscribed_with_cache(user_with_customer_id, stripe_subscription_product_id)
+    assert subscribed is True
+
+
+@pytest.mark.django_db
+def test_user_is_not_subscribed_with_cache(user_with_and_without_customer_id, django_cache, stripe_subscription_product_id):
+    cache_key = f'is_subscribed_{user_with_and_without_customer_id.id}_{stripe_subscription_product_id}'
+    subscribed = payments.is_subscribed_with_cache(user_with_and_without_customer_id,
+                                                   product_id=stripe_subscription_product_id)
+    assert subscribed is False
+    assert django_cache.get(cache_key) is None
+    subscribed = payments.is_subscribed_with_cache(user_with_and_without_customer_id,
+                                                   product_id=stripe_subscription_product_id)
+    assert subscribed is False

@@ -1,7 +1,9 @@
+import datetime
 import os
 
 import sys
 import pytest
+import pytz
 from pytest_django.live_server_helper import LiveServer
 import stripe
 from stripe.error import InvalidRequestError
@@ -9,6 +11,7 @@ from unittest import mock
 
 from urllib.parse import urljoin
 from django.dispatch import Signal
+from django.core.cache import cache
 from django_stripe import payments, signals
 from django_stripe.tests import signal_mock, get_url
 from seleniumlogin import force_login
@@ -16,6 +19,11 @@ import subscriptions
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.options import Options
+options = Options()
+options.page_load_strategy = 'none'
+
+
 from tests.django_stripe_testapp.models import User
 
 from typing import List, Dict, Any, Optional
@@ -96,6 +104,13 @@ def user(user_email):
             pass
 
 
+@pytest.fixture
+def user_allowed_access_until(user):
+    user.allowed_access_until = datetime.datetime(2030, 12, 30, 23, 59, 59, tzinfo=pytz.utc)
+    user.save()
+    yield user
+
+
 @pytest.fixture()
 def second_user(user_alternative_email):
     user = User(id=2, email=user_alternative_email, first_name='Second', last_name="User", username="second_user")
@@ -106,6 +121,11 @@ def second_user(user_alternative_email):
         subscriptions.delete_customer(user)
     except InvalidRequestError:
         pass
+
+
+@pytest.fixture(autouse=True)
+def set_default_product_id(settings, stripe_subscription_product_id):
+    settings.STRIPE_DEFAULT_SUBSCRIPTION_PRODUCT_ID = stripe_subscription_product_id
 
 
 def create_customer_id(user):
@@ -325,7 +345,7 @@ def subscribed_product_name() -> str:
     return 'Gold'
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(autouse=True, scope="session")
 def stripe_subscription_product_id(stripe_subscription_product_url, subscribed_product_name) -> str:
     products = stripe.Product.list(url=stripe_subscription_product_url, active=True, limit=1)
     if products:
@@ -767,3 +787,10 @@ def selenium_go_to_setup_checkout_subscription(selenium_authenticated: WebDriver
 @pytest.fixture
 def selenium_go_to_billing_portal(selenium_authenticated: WebDriver, live_server: LiveServer) -> WebDriver:
     return selenium_go_to_view_wait_stripe(selenium_authenticated, live_server, "go-to-billing-portal")
+
+
+@pytest.fixture
+def django_cache() -> cache:
+    cache = payments.get_subscription_cache()
+    yield cache
+    cache.clear()

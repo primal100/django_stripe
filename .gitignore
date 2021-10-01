@@ -1,3 +1,4 @@
 .pytest_cache/*
 stripe-subscriptions/*
 *.sqlite3
+*.coverage

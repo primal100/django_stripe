@@ -14,3 +14,10 @@ class StripeException(exceptions.APIException):
         super().__init__(detail=detail, code=code)
         self.request_id = get_request_id_string(self.detail)
         self.detail = self.detail.replace(self.request_id, "")
+
+
+class ConfigurationException(BaseException):
+    def __init__(self, setting_name: str):
+        self.message = f'You must add the setting {setting_name} to settings.py'
+        super().__init__(self.message)
+

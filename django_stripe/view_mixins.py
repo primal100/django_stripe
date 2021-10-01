@@ -10,6 +10,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 from django_stripe import payments, exceptions
+from .logging import logger
 from subscriptions.types import Protocol
 from typing import Dict, Any, Callable, List, Type, Union, Iterable, Optional
 
@@ -50,7 +51,6 @@ class StripeViewMixin(Protocol):
         if self.response_keys:
             return {self.get_key(k): self.get_value(item, k) for k in self.response_keys}
         return item
-
 
     def run_stripe(self, request: Request, method: Callable = None, **data) -> DataType:
         method = method or self.make_request
@@ -113,8 +113,8 @@ class StripeListMixin(StripeViewWithSerializerMixin, Protocol):
     def list(self, request: Request, **kwargs) -> Iterable[Dict[str, Any]]:
         return payments.list_customer_resource(request.user, self.stripe_resource, **kwargs)
 
-    def retrieve(self, request: Request, id: str) -> Dict[str, Any]:
-        return payments.retrieve(request.user, self.stripe_resource, id)
+    def retrieve(self, request: Request, obj_id: str) -> Dict[str, Any]:
+        return payments.retrieve(request.user, self.stripe_resource, obj_id)
 
     def prepare_list(self, items: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
         return sorted(
@@ -125,11 +125,13 @@ class StripeListMixin(StripeViewWithSerializerMixin, Protocol):
     def get_list(self, request: Request, **data) -> List[Dict[str, Any]]:
         return self.prepare_list(self.list(request, **data))
 
-    def get_one(self, request: Request, id: str) -> Dict[str, Any]:
+    def get_one(self, request: Request, obj_id: str) -> Dict[str, Any]:
         try:
-            return self.make_response(self.retrieve(request, id))
-        except subscriptions.exceptions.StripeWrongCustomer:
-            raise exceptions.StripeException(f"No such {self.name_in_errors}: '{id}'")
+            return self.make_response(self.retrieve(request, obj_id))
+        except subscriptions.exceptions.StripeWrongCustomer as e:
+            user = f'User {request.user.id}' if request.user and request.user.is_authenticated else "Unauthenticated User"
+            logger.warning("%s attempted to access object they do not own: %s. %s", user, obj_id, e)
+            raise exceptions.StripeException(f"No such {self.name_in_errors}: '{obj_id}'")
 
     def get(self, request: Request, **kwargs) -> Response:
         if kwargs:
@@ -167,33 +169,33 @@ class StripeCreateWithSerializerMixin(StripeViewWithSerializerMixin, Protocol):
 class StripeModifyMixin(StripeViewWithSerializerMixin, Protocol):
     permission_classes = (IsAuthenticated,)
 
-    def modify(self, request: Request, id: str, **data) -> Dict[str, Any]:
-        return payments.modify(request.user, self.stripe_resource, id, **data)
+    def modify(self, request: Request, obj_id: str, **data) -> Dict[str, Any]:
+        return payments.modify(request.user, self.stripe_resource, obj_id, **data)
 
-    def run_modify(self, request: Request, id: str, **data) -> Dict[str, Any]:
+    def run_modify(self, request: Request, obj_id: str, **data) -> Dict[str, Any]:
         try:
-            return self.make_response(self.modify(request, id=id, **data))
+            return self.make_response(self.modify(request, obj_id, **data))
         except subscriptions.exceptions.StripeWrongCustomer:
-            raise exceptions.StripeException(f"No such {self.name_in_errors}: '{id}'")
+            raise exceptions.StripeException(f"No such {self.name_in_errors}: '{obj_id}'")
 
-    def put(self, request: Request, id: str, **kwargs) -> Response:
+    def put(self, request: Request, obj_id: str, **kwargs) -> Response:
         return self.run_serialized_stripe_response(request, method=self.run_modify,
-                                                   status_code=status.HTTP_200_OK, id=id, **kwargs)
+                                                   status_code=status.HTTP_200_OK, obj_id=obj_id, **kwargs)
 
 
 class StripeDeleteMixin(StripeViewMixin, Protocol):
     permission_classes = (IsAuthenticated,)
 
-    def destroy(self, request: Request, id: str) -> None:
-        payments.delete(request.user, self.stripe_resource, id)
+    def destroy(self, request: Request, obj_id: str) -> None:
+        payments.delete(request.user, self.stripe_resource, obj_id)
 
-    def run_delete(self, request: Request, id: str) -> None:
+    def run_delete(self, request: Request, obj_id: str) -> None:
         try:
-            self.destroy(request, id=id)
+            self.destroy(request, obj_id=obj_id)
         except subscriptions.exceptions.StripeWrongCustomer:
-            raise exceptions.StripeException(f"No such {self.name_in_errors}: '{id}'")
+            raise exceptions.StripeException(f"No such {self.name_in_errors}: '{obj_id}'")
 
-    def delete(self, request: Request, id: str, **kwargs) -> Response:
+    def delete(self, request: Request, obj_id: str, **kwargs) -> Response:
         return self.run_stripe_response(request, method=self.run_delete,
                                         status_code=status.HTTP_204_NO_CONTENT,
-                                        id=id, **kwargs)
+                                        obj_id=obj_id, **kwargs)
