@@ -1,6 +1,7 @@
 import pytest
 import stripe
 import subscriptions
+from django.core import exceptions
 from django_stripe import payments
 from django_stripe import signals
 from django_stripe.tests import assert_customer_id_exists, assert_signal_called, assert_customer_email, assert_customer_description
@@ -89,17 +90,32 @@ def test_billing_portal(user_with_and_without_customer_id):
 
 @pytest.mark.django_db
 def test_product_list_subscribed(user_with_customer_id, stripe_subscription_product_id, stripe_unsubscribed_product_id,
-                                 expected_subscription_products_and_prices, subscription):
+                                 subscription, expected_subscription_products_and_prices):
     result = payments.get_products(user_with_customer_id, ids=[stripe_subscription_product_id,
                                                                stripe_unsubscribed_product_id])
     assert result == expected_subscription_products_and_prices
 
 
 @pytest.mark.django_db
-def test_product_retrieve(user_with_customer_id, stripe_subscription_product_id,
-                          expected_subscription_products_and_prices, subscription):
+def test_product_retrieve(user_with_customer_id, stripe_subscription_product_id, stripe_unsubscribed_product_id,
+                          subscription, expected_subscription_products_and_prices):
     result = payments.retrieve_product(user_with_customer_id, stripe_subscription_product_id)
     assert result == expected_subscription_products_and_prices[1]
+    result = payments.retrieve_product(user_with_customer_id, stripe_unsubscribed_product_id)
+    assert result == expected_subscription_products_and_prices[0]
+
+
+@pytest.mark.django_db
+def test_product_restricted_product(user_with_customer_id, stripe_subscription_product_id,
+                                    stripe_unsubscribed_product_id, subscription, restrict_products,
+                                    expected_subscription_products_and_prices,
+                                    expected_restricted_product):
+    result = payments.get_products(user_with_customer_id)
+    assert result == expected_restricted_product
+    result = payments.retrieve_product(user_with_customer_id, stripe_subscription_product_id)
+    assert result == expected_restricted_product[0]
+    with pytest.raises(exceptions.PermissionDenied):
+        payments.retrieve_product(user_with_customer_id, stripe_unsubscribed_product_id)
 
 
 @pytest.mark.django_db
@@ -114,10 +130,12 @@ def test_product_list_unsubscribed(no_user_and_user_with_and_without_customer_id
 
 
 @pytest.mark.django_db
-def test_price_list_subscribed(user_with_customer_id, stripe_subscription_product_id,
+def test_price_list_subscribed(user_with_customer_id, stripe_subscription_product_id, stripe_unsubscribed_product_id,
                                expected_subscription_prices, subscription):
     result = payments.get_prices(user_with_customer_id, product=stripe_subscription_product_id)
     assert result == expected_subscription_prices
+    result = payments.get_prices(user_with_customer_id, product=stripe_unsubscribed_product_id)
+    assert len(result) == 1
 
 
 @pytest.mark.django_db
@@ -133,6 +151,20 @@ def test_price_retrieve(user_with_customer_id, stripe_price_id,
                         expected_subscription_prices, subscription):
     result = payments.retrieve_price(user_with_customer_id, stripe_price_id)
     assert result == expected_subscription_prices[0]
+
+
+@pytest.mark.django_db
+def test_price_list_restrict_products(user_with_customer_id, stripe_subscription_product_id, restrict_products,
+                                      stripe_unsubscribed_product_id, expected_subscription_prices, subscription,
+                                      stripe_price_id, stripe_unsubscribed_price_id):
+    result = payments.get_prices(user_with_customer_id, product=stripe_subscription_product_id)
+    assert result == expected_subscription_prices
+    with pytest.raises(exceptions.PermissionDenied):
+        payments.get_prices(user_with_customer_id, product=stripe_unsubscribed_product_id)
+    result = payments.retrieve_price(user_with_customer_id, stripe_price_id)
+    assert result == expected_subscription_prices[0]
+    with pytest.raises(exceptions.PermissionDenied):
+        payments.retrieve_price(user_with_customer_id, stripe_unsubscribed_price_id)
 
 
 @pytest.mark.django_db

@@ -52,6 +52,10 @@ class Settings:
             raise ConfigurationException('STRIPE_DEFAULT_SUBSCRIPTION_PRODUCT_ID')
 
     @property
+    def STRIPE_ALLOW_DEFAULT_PRODUCT_ONLY(self) -> Optional[str]:
+        return getattr(django_settings, 'STRIPE_ALLOW_DEFAULT_PRODUCT_ONLY', False)
+
+    @property
     def STRIPE_SUBSCRIPTION_CACHE_NAME(self) -> Optional[str]:
         return getattr(django_settings, 'STRIPE_SUBSCRIPTION_CACHE_NAME', 'default')
 

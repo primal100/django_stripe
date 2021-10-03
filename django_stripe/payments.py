@@ -1,10 +1,17 @@
 import stripe
+import stripe.error
 import subscriptions
+
+# Next line is so functions can be used by django_stripe user without needing to import from subscriptions
+from subscriptions import cancel_subscription, cancel_subscription_for_product, delete_customer
+
 from subscriptions.types import PaymentMethodType
 from functools import wraps
 from django.core.cache import caches, cache
+from django.core import exceptions
+from django import http
 from django.utils import timezone
-from rest_framework.exceptions import NotAuthenticated
+from rest_framework.exceptions import NotAuthenticated, PermissionDenied, NotFound
 
 from .conf import settings
 from .logging import logger, p
@@ -20,7 +27,22 @@ def add_stripe_customer_if_not_existing(f):
     def wrapper(user: DjangoUserProtocol, *args, **kwargs):
         user = create_customer(user)
         return f(user, *args, **kwargs)
+
     return wrapper
+
+
+def raise_appropriate_permission_denied(rest: bool, msg: str):
+    if rest:
+        raise PermissionDenied(msg)
+    else:
+        raise exceptions.PermissionDenied(msg)
+
+
+def raise_appropriate_not_found(rest: bool, msg: str):
+    if rest:
+        raise NotFound(msg)
+    else:
+        raise http.Http404(msg)
 
 
 @get_actual_user
@@ -76,12 +98,20 @@ def create_checkout(user: subscriptions.types.UserProtocol, method: Callable, **
     return session
 
 
-def create_subscription_checkout(user: subscriptions.types.UserProtocol, price_id: str, **kwargs) -> stripe.checkout.Session:
+def create_subscription_checkout(user: subscriptions.types.UserProtocol, price_id: str, rest: bool = False,
+                                 **kwargs) -> stripe.checkout.Session:
+    try:
+        retrieve_price(user, price_id, rest=rest)            # To check that price is allowed depending on settings
+    except stripe.error.InvalidRequestError:
+        raise raise_appropriate_not_found(rest, f"No such price: '{price_id}'")
     logger.debug('Creating new subscription checkout session for user %s', user.id)
     return create_checkout(user, subscriptions.create_subscription_checkout, price_id=price_id, **kwargs)
 
 
-def create_setup_checkout(user: subscriptions.types.UserProtocol, **kwargs) -> stripe.checkout.Session:
+def create_setup_checkout(user: subscriptions.types.UserProtocol, rest: bool = False, **kwargs) -> stripe.checkout.Session:
+    """
+    Rest argument needed for consistency with create_subscription_checkout
+    """
     logger.debug('Creating new setup checkout session for user %s', user.id)
     return create_checkout(user, method=subscriptions.create_setup_checkout, **kwargs)
 
@@ -99,24 +129,40 @@ def create_billing_portal(user) -> stripe.billing_portal.Session:
 
 
 @get_actual_user
-def get_products(user, ids: List[str] = None, price_kwargs: Dict[str, Any] = None,
+def get_products(user, ids: List[str] = None, price_kwargs: Dict[str, Any] = None, rest: bool = False,
                  **kwargs) -> List[Dict[str, Any]]:
+    if settings.STRIPE_ALLOW_DEFAULT_PRODUCT_ONLY:
+        for product in ids or []:
+            if not product == settings.STRIPE_DEFAULT_SUBSCRIPTION_PRODUCT_ID:
+                raise_appropriate_permission_denied(rest, f"Cannot access product {product}")
+        ids = [settings.STRIPE_DEFAULT_SUBSCRIPTION_PRODUCT_ID]
     return subscriptions.get_subscription_products_and_prices(user, ids=ids, price_kwargs=price_kwargs, **kwargs)
 
 
 @get_actual_user
-def get_prices(user, product: str = None, currency: str = None, **kwargs) -> List[Dict[str, Any]]:
-    return subscriptions.get_subscription_prices(user, product=product, currency=currency, **kwargs)
+def get_prices(user, product: str = None, currency: str = None, rest: bool = False, **kwargs) -> List[Dict[str, Any]]:
+    if settings.STRIPE_ALLOW_DEFAULT_PRODUCT_ONLY:
+        if product and not product == settings.STRIPE_DEFAULT_SUBSCRIPTION_PRODUCT_ID:
+            raise_appropriate_permission_denied(rest, f"Cannot access product {product}")
+        product = settings.STRIPE_DEFAULT_SUBSCRIPTION_PRODUCT_ID
+    result = subscriptions.get_subscription_prices(user, product=product, currency=currency, **kwargs)
+    return result
 
 
 @get_actual_user
-def retrieve_product(user, obj_id: str, price_kwargs: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def retrieve_product(user, obj_id: str, price_kwargs: Optional[Dict[str, Any]] = None,
+                     rest: bool = False) -> Dict[str, Any]:
+    if settings.STRIPE_ALLOW_DEFAULT_PRODUCT_ONLY and not obj_id == settings.STRIPE_DEFAULT_SUBSCRIPTION_PRODUCT_ID:
+        raise_appropriate_permission_denied(rest, f"Cannot access product {obj_id}")
     return subscriptions.retrieve_product(user, obj_id, price_kwargs=price_kwargs)
 
 
 @get_actual_user
-def retrieve_price(user, obj_id: str) -> Dict[str, Any]:
-    return subscriptions.retrieve_price(user, obj_id)
+def retrieve_price(user, obj_id: str, rest: bool = False) -> Dict[str, Any]:
+    price = subscriptions.retrieve_price(user, obj_id)
+    if settings.STRIPE_ALLOW_DEFAULT_PRODUCT_ONLY and not price['product'] == settings.STRIPE_DEFAULT_SUBSCRIPTION_PRODUCT_ID:
+        raise_appropriate_permission_denied(rest, f"Cannot access price {obj_id}")
+    return price
 
 
 @get_actual_user
@@ -136,7 +182,8 @@ def create_setup_intent(user, **kwargs) -> stripe.SetupIntent:
 
 
 @get_actual_user
-def list_payment_methods(user, types: List[PaymentMethodType] = None, **kwargs) -> Generator[stripe.PaymentMethod, None, None]:
+def list_payment_methods(user, types: List[PaymentMethodType] = None, **kwargs) -> Generator[
+    stripe.PaymentMethod, None, None]:
     types = types or settings.STRIPE_PAYMENT_METHOD_TYPES
     return subscriptions.list_payment_methods(user, types, **kwargs)
 
@@ -181,8 +228,10 @@ def create_subscription(user, price_id: str,
 @subscriptions.decorators.customer_id_required
 def modify_subscription(user, sub_id: str, set_as_default_payment_method: bool = False,
                         **kwargs) -> stripe.Subscription:
-    logger.debug('Modifying subscription %s for user %s price_id: %s for keys: %s', sub_id, user.id, list(kwargs.keys()))
-    subscription = subscriptions.modify_subscription(user, sub_id, set_as_default_payment_method=set_as_default_payment_method,
+    logger.debug('Modifying subscription %s for user %s price_id: %s for keys: %s', sub_id, user.id,
+                 list(kwargs.keys()))
+    subscription = subscriptions.modify_subscription(user, sub_id,
+                                                     set_as_default_payment_method=set_as_default_payment_method,
                                                      **kwargs)
     signals.subscription_modified.send(sender=user, subscription=subscription)
     logger.debug('Subscription %s modified by user %s', sub_id, user.id)
@@ -221,7 +270,7 @@ def modify(user: DjangoUserProtocol, obj_cls: Type, obj_id: str, **kwargs: Dict[
 
 
 @get_actual_user
-def is_subscribed_and_cancelled_time(user, product_id: str = None  ) -> SubscriptionInfoWithEvaluation:
+def is_subscribed_and_cancelled_time(user, product_id: str = None) -> SubscriptionInfoWithEvaluation:
     product_id = product_id or settings.STRIPE_DEFAULT_SUBSCRIPTION_PRODUCT_ID
     if hasattr(user, 'allowed_access_until') and (
             user.allowed_access_until and user.allowed_access_until >= timezone.now()):
@@ -247,9 +296,10 @@ def is_subscribed_with_cache(user, product_id: str = None) -> bool:
     cache_key = f'is_subscribed_{user.id}_{product_id}'
     subscribed = cache.get(cache_key)
     if subscribed is None:
-        logger.debug('Retrieving subscription data with cache key %s for user %s for product %s', cache_key, user.id, product_id)
+        logger.debug('Retrieving subscription data with cache key %s for user %s for product %s', cache_key, user.id,
+                     product_id)
         subscribed = is_subscribed(user, product_id)
         if subscribed:
-            logger.debug('Setting cache key %s for user %s subscription: %s', cache_key, user.id, subscribed,)
+            logger.debug('Setting cache key %s for user %s subscription: %s', cache_key, user.id, subscribed, )
             cache.set(cache_key, subscribed, timeout=settings.STRIPE_SUBSCRIPTION_CHECK_CACHE_TIMEOUT_SECONDS)
     return subscribed
