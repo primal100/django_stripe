@@ -1,81 +1,210 @@
 {% load static %}
+{% load prices %}
+{% load rest_framework %}
 
+{% block head %}
 <html lang="en">
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Sample Stripe Subscription Payment Form</title>
     <script src="https://js.stripe.com/v3/"></script>
-    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
     <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
     <link rel="stylesheet" href="https://code.getmdl.io/1.3.0/material.indigo-pink.min.css">
+    <link rel="stylesheet" href="{%  static 'css/django_stripe/pricing.css' %}">
     <script defer src="https://code.getmdl.io/1.3.0/material.min.js"></script>
-    <script src="{% static 'js/django_stripe/web_client.jpg' %}"></script>
 </head>
+{% endblock %}
 
 <body>
-<h2>Subscription Form</h2>
-Hello {{  user.first_name }} {{ user.last_name }}
+'<input type="hidden" name="csrfmiddlewaretoken" value="CX9jcbY0qIu54SfwXCpJ7AVr8RSIs6s5SNlEQ0EHFSptS6pnTIXe6Uk0bZ2qCM5y">'
+{% block intro %}
+<h1 class="title">Subscription Options</h1>
+{%  endblock %}
 
+
+{% block snackbar %}
 <div id="demo-snackbar-example" class="mdl-js-snackbar mdl-snackbar">
   <div class="mdl-snackbar__text"></div>
   <button class="mdl-snackbar__action" type="button"></button>
 </div>
+{% endblock %}
 
 
-<section>
+{% block prices %}
 
-    <form id="subscription-form" method="post">
-        {% csrf_token %}
-        {{ form.as_p }}
-    </form>
+    <! ––  Thanks to https://codepen.io/kresogalic/pen/dGzvRV ––>
+    <div class="pricing-table">
+
+    {% for price in product.prices %}
+            <div class="pricing-option">
+                <hr />
+                <p>{{ price.description  }}</p>
+                <hr/>
+                <div class="price">
+                    <div class="front">
+                        <span class="price">{% block price %}{{ price.currency | currency_symbol }}{{ price.unit_amount | to_decimal_currency }} {%  endblock %} / {{price.recurring.interval}}</span>
+                    </div>
+                    <div class="back">
+                        <a id="{{ price.id }}" href="#" class="button" onclick="onPriceClick(event)">Purchase now</a>
+                    </div>
+                </div>
+            </div>
+    {%  endfor %}
+
+    </div>
+
+{%  endblock %}
+
+
+{% block payment_methods %}
+
+    <div id="payment-methods" style="display:none">
+        <ul class="demo-list-item mdl-list">
+
+        {% for pm in payment_methods %}
+            <li class="mdl-list__item">
+            <label class="mdl-radio mdl-js-radio" for="{{  pm.id }}">
+                      <input type="radio" id="{{pm.id}}" name="payment_method" onclick="onPaymentMethodClick(event)"
+                         class="mdl-radio__button" {% if forloop.counter == 1 %}checked{% endif %}>
+                      <span class="mdl-radio__label">{{ pm.id }}</span>
+            </label>
+            </li>
+        {%  endfor %}
+
+        {% if payment_methods %}
+            <li class="mdl-list__item">
+            <label class="mdl-radio mdl-js-radio" for="select-new-payment-method">
+                      <input type = "radio" id="select-new-payment-method" name="payment_method" onclick="onNewPaymentMethodClick()"
+                         class="mdl-radio__button">
+                      <span class="mdl-radio__label">New Payment Method</span>
+            </label>
+            </li>
+        {%  endif %}
+
+        </ul>
+
+<section id="new-payment-method">
 
   <div style="width: 25%; height: 10%;" class="elements" id="card"></div>
 
-  <button id="card-submit" onclick="confirmPaymentMethod()">
-    Add Card
-  </button>
-
 </section>
 
+</div>
+{%  endblock %}
+
+
+<section id="submit-section" style="display:none">
+  <button id="submit" onclick="subscribe()">
+    Subscribe
+  </button>
+</section>
 
 {{ js_vars|json_script:"context" }}
 
 
 <script>
-  var context = JSON.parse(document.getElementById('context').textContent);
-  var stripe = Stripe(context.stripe_public_key);
-  var client_secret = context.stripe_client_secret;
-  var hidePostalCode = context.hide_postal_code;
-  var paymentMethodTypes = context.payment_method_types;
-  var formElement = document.querySelector('#subscription-form');
-  var elements = stripe.elements();
-  var card = "#card"; // HTML div to mount card;
-  var cardSubmit = document.querySelector("#card-submit");
-  var cardElement = elements.create('card', {hidePostalCode: hidePostalCode});
-  var submitDisabled = true;
-  cardElement.mount(card);
+    var selectedPriceId = null;
+
+    function onPriceClick(event){
+        selectedPriceId = event.target.id;
+        document.querySelector("#payment-methods").style.display = "block";
+        document.querySelector("#submit-section").style.display = "block";
+    }
+
+    function onPaymentMethodClick(event){
+        hideCard();
+    }
+
+    function onNewPaymentMethodClick(){
+        console.log('Running on new payment methods')
+        showCard();
+    }
+
+    function getSelectedPaymentMethod(){
+        var selectedPaymentMethod = null;
+        document.querySelectorAll('input[name="payment_method"]').forEach((elem) => {
+            console.log([elem.id, elem.checked]);
+            if (elem.checked && elem.id !== "select-new-payment-method"){
+                console.log(elem.id + " is selected")
+                selectedPaymentMethod = elem.id;
+            }
+        })
+        return selectedPaymentMethod;
+    }
+
+    function createSubscription(selectedPaymentMethodId, subscriptionUrl) {
+        console.log('Creating subscription');
+        axios.post(subscriptionUrl, {
+            default_payment_method: selectedPaymentMethodId,
+            price_id: selectedPriceId
+        }).then(console.log);
+    }
+
+</script>
+
+
+<script>
+  axios.defaults.headers.post['X-CSRFToken'] = document.querySelector('input[name="csrfmiddlewaretoken"]').value
+  const context = JSON.parse(document.getElementById('context').textContent);
+  const stripe = Stripe(context.stripe_public_key);
+  const hidePostalCode = context.hide_postal_code;
+  const subscriptionUrl = context.subscription_api_url;
+  const setupIntentsUrl = context.setup_intents_url;
+  const elements = stripe.elements();
+  const card = "#card"; // HTML div to mount card;
+  const cardSubmit = document.querySelector("#submit");
+  const cardElement = elements.create('card', {hidePostalCode: hidePostalCode});
+  let submitDisabled = true;
+
+  function showCard() {
+      cardElement.mount(card);
+  }
+
+  function hideCard(){
+    cardElement.unmount();
+  }
+
   cardElement.on('change', function(e) {
       cardSubmit.disabled = !e.complete;
       // manage errors
   });
-  function confirmPaymentMethod(){
-    stripe
-        .confirmCardSetup(client_secret, {
-            payment_method: {
-                card: cardElement,
-        },
-  })
-  .then(function(result) {
-      console.log('Got response from confirmCardSetup:')
-      console.log(result);
-      if (result.setupIntent) {
-          console.log(result.setupIntent);
-        formElement.submit();
-      }else if (result.error){
-          // Handle result.error
-          console.log(result.error);
+
+  if (!context.has_payment_methods){
+      showCard();
+  }
+
+  function subscribe() {
+      let selectedPaymentMethodId = getSelectedPaymentMethod();
+      console.log('Found selected payment method id', selectedPaymentMethodId)
+      if (selectedPaymentMethodId){
+        console.log('creating subscription')
+        createSubscription(selectedPaymentMethodId, subscriptionUrl)
+      } else {
+          console.log('Creating setupIntent');
+          axios.post(setupIntentsUrl)
+              .then((response) => {
+               let setupIntent = response.data;
+              console.log("confirming card setup with setupIntent", setupIntent);
+              stripe.confirmCardSetup(setupIntent.client_secret, {
+                  payment_method: {
+                      card: cardElement,
+                  },
+              })
+              .then(function (result) {
+                  setupIntent = result.setupIntent;
+                  if (setupIntent) {
+                      console.log("setupIntent confirmed");
+                      selectedPaymentMethodId = setupIntent.payment_method;
+                      console.log("selectedPaymentMethodId", selectedPaymentMethodId);
+                      createSubscription(selectedPaymentMethodId, subscriptionUrl)
+                  } else if (result.error) {
+                      // Handle result.error
+                      console.log(result.error);
+                  }
+              });
+          });
       }
-  });
   }
 
 </script>

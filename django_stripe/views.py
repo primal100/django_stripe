@@ -1,6 +1,7 @@
 import stripe
 from django.views.generic import RedirectView, TemplateView
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.urls import reverse
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
@@ -8,6 +9,8 @@ from rest_framework.views import APIView
 from .conf import settings
 from . import serializers
 from . import payments
+from .utils import get_user_if_token_user
+from .logging import logger
 from .view_mixins import StripeListMixin, StripeCreateMixin, StripeCreateWithSerializerMixin, StripeModifyMixin, StripeDeleteMixin
 from typing import Dict, Any, List, Iterable
 
@@ -161,8 +164,12 @@ class GoToBillingPortalView(LoginRequiredMixin, RedirectView):
         return session['url']
 
 
-class SubscriptionFormView(LoginRequiredMixin, FormView):
+class PaymentPortalView(LoginRequiredMixin, TemplateView):
     template_name = 'django_stripe/subscription_form.html'
+    product_id: str = None
+
+    def get_product_id(self) -> str:
+        return self.product_id or settings.STRIPE_DEFAULT_SUBSCRIPTION_PRODUCT_ID
 
     def get(self, request, *args, **kwargs):
         if request.user and request.user.is_authenticated:
@@ -171,26 +178,18 @@ class SubscriptionFormView(LoginRequiredMixin, FormView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        setup_intent = payments.create_setup_intent(self.request.user)
+        user = get_user_if_token_user(self.request.user)
+        product_id = self.get_product_id()
+        logger.debug("Opening payments portal for user %d, product %s", user.id, product_id)
+        context['payment_methods'] = list(payments.list_payment_methods(user, settings.STRIPE_PAYMENT_METHOD_TYPES))
+        context['product'] = payments.retrieve_product(user, product_id)
+        context['user'] = user
         context['js_vars'] = {
-            'stripe_client_secret': setup_intent['client_secret'],
-            'payment_method_types': setup_intent['payment_method_types'],
             'hide_postal_code': settings.STRIPE_CREDIT_CARD_HIDE_POSTAL_CODE,
-            'stripe_public_key': settings.STRIPE_PUBLIC_KEY
+            'stripe_public_key': settings.STRIPE_PUBLISHABLE_KEY,
+            'has_payment_methods': bool(context['payment_methods']),
+            'subscription_api_url': reverse("subscriptions"),
+            'setup_intents_url': reverse("setup-intents")
         }
-        context['user'] = self.request.user
+        print(context['js_vars'])
         return context
-
-    def form_valid(self, form):
-        price_id = form.cleaned_data['price_id']
-        user = self.request.user
-        try:
-            sub = payments.create_subscription(user, price_id)
-            messages.success(self.request, f"Successfully subscribed to {sub['id']}")
-        except stripe.error.StripeError as e:
-            logger.exception(e, exc_info=e)
-            error = str(e)
-            request_id = exceptions.get_request_id_string(error)
-            detail = error.replace(request_id, "")
-            messages.error(self.request, detail)
-        return self.render_to_response(self.get_context_data(form=form))

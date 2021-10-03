@@ -133,7 +133,7 @@ STRIPE_CHECKOUT_SUCCESS_URL = "http://localhost"
 STRIPE_CHECKOUT_CANCEL_URL = "http://localhost/cancel"
 STRIPE_PAYMENT_METHOD_TYPES = ["card"]
 STRIPE_BILLING_PORTAL_RETURN_URL = "http://localhost"
-STRIPE_CREDIT_CARD_HIDE_POSTAL_CODE = True
+STRIPE_CREDIT_CARD_HIDE_POSTAL_CODE = False
 
 LOGIN_URL = '/api-auth/login/'
 LOGIN_REDIRECT_URL = '/subscription-form/'

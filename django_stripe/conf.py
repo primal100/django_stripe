@@ -1,9 +1,11 @@
 import os
+import stripe
 
+from . import __version__, app_name, url
 from django.conf import settings as django_settings
 from django.core.cache.backends.base import DEFAULT_TIMEOUT
 from .exceptions import ConfigurationException
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
 
 
 def return_empty_kwargs(**kwargs) -> Dict:
@@ -11,6 +13,22 @@ def return_empty_kwargs(**kwargs) -> Dict:
 
 
 class Settings:
+
+    @property
+    def STRIPE_SECRET_KEY(self) -> str:
+        return getattr(django_settings, 'STRIPE_SECRET_KEY', os.environ.get('STRIPE_SECRET_KEY', stripe.api_key))
+
+    @property
+    def STRIPE_PUBLISHABLE_KEY(self) -> str:
+        return getattr(django_settings, 'STRIPE_PUBLISHABLE_KEY', os.environ.get('STRIPE_PUBLISHABLE_KEY'))
+
+    @property
+    def STRIPE_APP_DATA(self) -> Dict[str, Any]:
+        return getattr(django_settings, 'STRIPE_APP_DATA', {
+            'name': app_name,
+            'url': url,
+            'version': __version__
+        })
 
     @property
     def STRIPE_CHECKOUT_SUCCESS_URL(self) -> str:
@@ -47,8 +65,8 @@ class Settings:
     @property
     def STRIPE_DEFAULT_SUBSCRIPTION_PRODUCT_ID(self) -> Optional[str]:
         try:
-            return getattr(django_settings, 'STRIPE_DEFAULT_SUBSCRIPTION_PRODUCT_ID')
-        except AttributeError:
+            return getattr(django_settings, 'STRIPE_DEFAULT_SUBSCRIPTION_PRODUCT_ID', os.environ['STRIPE_DEFAULT_SUBSCRIPTION_PRODUCT_ID'])
+        except KeyError:
             raise ConfigurationException('STRIPE_DEFAULT_SUBSCRIPTION_PRODUCT_ID')
 
     @property
