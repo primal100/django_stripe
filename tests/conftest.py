@@ -638,12 +638,17 @@ def non_existing_price_id() -> str:
 
 @pytest.fixture
 def non_existing_price_id_error(non_existing_price_id) -> Dict[str, str]:
-    return {'detail': f"Attempt to access non-existing price id '{non_existing_price_id}'"}
+    return {'detail': f"No such price: '{non_existing_price_id}'"}
 
 
 @pytest.fixture
 def restricted_product_error(stripe_unsubscribed_product_id) -> Dict[str, str]:
     return {'detail': f'Cannot access product {stripe_unsubscribed_product_id}'}
+
+
+@pytest.fixture
+def restricted_price_error(stripe_unsubscribed_price_id) -> Dict[str, str]:
+    return {'detail': f'Cannot access price {stripe_unsubscribed_price_id}'}
 
 
 def get_invoice_error(invoice_id: str) -> Dict[str, Any]:

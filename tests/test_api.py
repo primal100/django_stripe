@@ -41,12 +41,12 @@ def test_checkout_non_existing_price(authenticated_client_with_without_customer_
 
 @pytest.mark.django_db
 def test_checkout_restrict_product(authenticated_client_with_without_customer_id, user, stripe_unsubscribed_price_id,
-                                   non_existing_price_id_error, restrict_products):
+                                   restricted_price_error, restrict_products):
     response = make_request(authenticated_client_with_without_customer_id.post,
                             'checkout',
                             403,
                             url_params={'price_id': stripe_unsubscribed_price_id})
-    assert response.data == non_existing_price_id_error
+    assert response.data == restricted_price_error
 
 
 @pytest.mark.django_db

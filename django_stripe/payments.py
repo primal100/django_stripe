@@ -103,7 +103,7 @@ def create_subscription_checkout(user: subscriptions.types.UserProtocol, price_i
     try:
         retrieve_price(user, price_id, rest=rest)            # To check that price is allowed depending on settings
     except stripe.error.InvalidRequestError:
-        raise raise_appropriate_not_found(rest, f"Attempt to access non-existing price id '{price_id}'")
+        raise raise_appropriate_not_found(rest, f"No such price: '{price_id}'")
     logger.debug('Creating new subscription checkout session for user %s', user.id)
     return create_checkout(user, subscriptions.create_subscription_checkout, price_id=price_id, **kwargs)
 
