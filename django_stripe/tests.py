@@ -3,8 +3,12 @@ from typing import Callable
 from unittest import mock
 from django.db import models
 from django.dispatch import Signal
-from django.test import Client
 from django.urls import reverse_lazy
+
+# So functions can be used by django_stripe user without needing to import from subscriptions
+from subscriptions.tests import *
+
+
 import stripe
 from typing import Dict, Any
 

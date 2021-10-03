@@ -1,3 +1,4 @@
+import copy
 import datetime
 import os
 
@@ -126,6 +127,24 @@ def second_user(user_alternative_email):
 @pytest.fixture(autouse=True)
 def set_default_product_id(settings, stripe_subscription_product_id):
     settings.STRIPE_DEFAULT_SUBSCRIPTION_PRODUCT_ID = stripe_subscription_product_id
+
+
+@pytest.fixture
+def restrict_products(settings):
+    settings.STRIPE_ALLOW_DEFAULT_PRODUCT_ONLY = True
+
+
+@pytest.fixture
+def restrict_prices(settings, stripe_price_id):
+    settings.STRIPE_AVAILABLE_PRICES = [stripe_price_id]
+
+
+@pytest.fixture(params=["product", "price"])
+def restrict_product_or_price(request, settings, stripe_price_id):
+    if request.param == 'product':
+        settings.STRIPE_ALLOW_DEFAULT_PRODUCT_ONLY = True
+    else:
+        settings.STRIPE_AVAILABLE_PRICES = [stripe_price_id]
 
 
 def create_customer_id(user):
@@ -461,7 +480,7 @@ def expected_subscription_products_and_prices(stripe_subscription_product_id, st
                                               unsubscribed_product_name, stripe_unsubscribed_price_id,
                                               stripe_subscription_product_url,
                                               stripe_unsubscribed_product_url,
-                                              stripe_price_currency, subscription_current_period_end) -> List:
+                                              stripe_price_currency, subscription_current_period_end) -> List[Dict[str, Any]]:
     return [
         {'id': stripe_unsubscribed_product_id,
          'images': [],
@@ -512,6 +531,23 @@ def expected_subscription_products_and_prices(stripe_subscription_product_id, st
          'subscription_info': {
              'subscribed': True, 'current_period_end': subscription_current_period_end, 'cancel_at': None}}
     ]
+
+
+@pytest.fixture
+def expected_restricted_product(expected_subscription_products_and_prices) -> List[Dict[str, Any]]:
+    return [expected_subscription_products_and_prices[1]]
+
+
+@pytest.fixture
+def expected_products_restricted_prices(expected_subscription_products_and_prices) -> List[Dict[str, Any]]:
+    products = copy.deepcopy(expected_subscription_products_and_prices)
+    products[0]['prices'] = []
+    return products
+
+
+@pytest.fixture
+def expected_restricted_product_restricted_prices(expected_subscription_products_and_prices) -> List[Dict[str, Any]]:
+    return [expected_subscription_products_and_prices[1]]
 
 
 @pytest.fixture

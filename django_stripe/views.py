@@ -2,6 +2,7 @@ import stripe
 from django.views.generic import RedirectView, TemplateView
 from django.contrib.auth.mixins import LoginRequiredMixin
 from rest_framework import status
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.views import APIView
@@ -76,7 +77,7 @@ class StripeInvoiceView(APIView, StripeListMixin):
     serializer_class = serializers.InvoiceSerializer
     permission_classes = (IsAuthenticated,)
     response_keys = ('id', "amount_due", "amount_paid", "amount_remaining", "billing_reason",
-                     "created","hosted_invoice_url", "invoice_pdf", "next_payment_attempt", "status", "subscription")
+                     "created", "hosted_invoice_url", "invoice_pdf", "next_payment_attempt", "status", "subscription")
 
     @property
     def name_in_errors(self) -> str:
