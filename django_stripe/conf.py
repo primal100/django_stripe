@@ -56,6 +56,10 @@ class Settings:
         return getattr(django_settings, 'STRIPE_ALLOW_DEFAULT_PRODUCT_ONLY', False)
 
     @property
+    def STRIPE_CREDIT_CARD_HIDE_POSTAL_CODE(self) -> bool:
+        return getattr(django_settings, 'STRIPE_CREDIT_CARD_HIDE_POSTAL_CODE', False)
+
+    @property
     def STRIPE_SUBSCRIPTION_CACHE_NAME(self) -> Optional[str]:
         return getattr(django_settings, 'STRIPE_SUBSCRIPTION_CACHE_NAME', 'default')
 

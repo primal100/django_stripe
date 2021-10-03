@@ -159,3 +159,38 @@ class GoToBillingPortalView(LoginRequiredMixin, RedirectView):
     def get_redirect_url(self, *args, **kwargs) -> str:
         session = payments.create_billing_portal(self.request.user, **kwargs)
         return session['url']
+
+
+class SubscriptionFormView(LoginRequiredMixin, FormView):
+    template_name = 'django_stripe/subscription_form.html'
+
+    def get(self, request, *args, **kwargs):
+        if request.user and request.user.is_authenticated:
+            payments.create_customer(request.user)
+        return super().get(request, *args, **kwargs)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        setup_intent = payments.create_setup_intent(self.request.user)
+        context['js_vars'] = {
+            'stripe_client_secret': setup_intent['client_secret'],
+            'payment_method_types': setup_intent['payment_method_types'],
+            'hide_postal_code': settings.STRIPE_CREDIT_CARD_HIDE_POSTAL_CODE,
+            'stripe_public_key': settings.STRIPE_PUBLIC_KEY
+        }
+        context['user'] = self.request.user
+        return context
+
+    def form_valid(self, form):
+        price_id = form.cleaned_data['price_id']
+        user = self.request.user
+        try:
+            sub = payments.create_subscription(user, price_id)
+            messages.success(self.request, f"Successfully subscribed to {sub['id']}")
+        except stripe.error.StripeError as e:
+            logger.exception(e, exc_info=e)
+            error = str(e)
+            request_id = exceptions.get_request_id_string(error)
+            detail = error.replace(request_id, "")
+            messages.error(self.request, detail)
+        return self.render_to_response(self.get_context_data(form=form))

@@ -1,0 +1,85 @@
+{% load static %}
+
+<html lang="en">
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sample Stripe Subscription Payment Form</title>
+    <script src="https://js.stripe.com/v3/"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+    <link rel="stylesheet" href="https://code.getmdl.io/1.3.0/material.indigo-pink.min.css">
+    <script defer src="https://code.getmdl.io/1.3.0/material.min.js"></script>
+    <script src="{% static 'js/django_stripe/web_client.jpg' %}"></script>
+</head>
+
+<body>
+<h2>Subscription Form</h2>
+Hello {{  user.first_name }} {{ user.last_name }}
+
+<div id="demo-snackbar-example" class="mdl-js-snackbar mdl-snackbar">
+  <div class="mdl-snackbar__text"></div>
+  <button class="mdl-snackbar__action" type="button"></button>
+</div>
+
+
+<section>
+
+    <form id="subscription-form" method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+    </form>
+
+  <div style="width: 25%; height: 10%;" class="elements" id="card"></div>
+
+  <button id="card-submit" onclick="confirmPaymentMethod()">
+    Add Card
+  </button>
+
+</section>
+
+
+{{ js_vars|json_script:"context" }}
+
+
+<script>
+  var context = JSON.parse(document.getElementById('context').textContent);
+  var stripe = Stripe(context.stripe_public_key);
+  var client_secret = context.stripe_client_secret;
+  var hidePostalCode = context.hide_postal_code;
+  var paymentMethodTypes = context.payment_method_types;
+  var formElement = document.querySelector('#subscription-form');
+  var elements = stripe.elements();
+  var card = "#card"; // HTML div to mount card;
+  var cardSubmit = document.querySelector("#card-submit");
+  var cardElement = elements.create('card', {hidePostalCode: hidePostalCode});
+  var submitDisabled = true;
+  cardElement.mount(card);
+  cardElement.on('change', function(e) {
+      cardSubmit.disabled = !e.complete;
+      // manage errors
+  });
+  function confirmPaymentMethod(){
+    stripe
+        .confirmCardSetup(client_secret, {
+            payment_method: {
+                card: cardElement,
+        },
+  })
+  .then(function(result) {
+      console.log('Got response from confirmCardSetup:')
+      console.log(result);
+      if (result.setupIntent) {
+          console.log(result.setupIntent);
+        formElement.submit();
+      }else if (result.error){
+          // Handle result.error
+          console.log(result.error);
+      }
+  });
+  }
+
+</script>
+
+
+</body>
+</html>
