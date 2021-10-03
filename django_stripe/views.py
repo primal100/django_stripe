@@ -2,7 +2,6 @@ import stripe
 from django.views.generic import RedirectView, TemplateView
 from django.contrib.auth.mixins import LoginRequiredMixin
 from rest_framework import status
-from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.views import APIView
@@ -18,13 +17,13 @@ class StripePriceCheckoutView(APIView, StripeCreateMixin):
     response_keys: tuple = ("id",)
 
     def create(self, request: Request, **data) -> stripe.checkout.Session:
-        return payments.create_subscription_checkout(request.user, **data)
+        return payments.create_subscription_checkout(request.user, rest=True, **data)
 
 
 class StripeSetupCheckoutView(StripePriceCheckoutView):
 
     def create(self, request: Request, **data) -> stripe.checkout.Session:
-        return payments.create_setup_checkout(request.user, **data)
+        return payments.create_setup_checkout(request.user, rest=True, **data)
 
 
 class StripeBillingPortalView(APIView, StripeCreateMixin):
@@ -51,10 +50,10 @@ class StripePricesView(APIView, StripeListMixin):
     order_reverse = False
 
     def list(self, request: Request, **kwargs) -> List[Dict[str, Any]]:
-        return payments.get_prices(request.user, **kwargs)
+        return payments.get_prices(request.user, rest=True, **kwargs)
 
     def retrieve(self, request: Request, price_id: str) -> Dict[str, Any]:
-        return payments.retrieve_price(request.user, price_id)
+        return payments.retrieve_price(request.user, price_id, rest=True)
 
 
 class StripeProductsView(APIView, StripeListMixin):
@@ -65,10 +64,10 @@ class StripeProductsView(APIView, StripeListMixin):
     order_reverse = False
 
     def list(self, request: Request, **kwargs) -> List[Dict[str, Any]]:
-        return payments.get_products(request.user, **kwargs)
+        return payments.get_products(request.user, rest=True, **kwargs)
 
     def retrieve(self, request: Request, product_id: str) -> Dict[str, Any]:
-        return payments.retrieve_product(request.user, product_id)
+        return payments.retrieve_product(request.user, product_id, rest=True)
 
 
 class StripeInvoiceView(APIView, StripeListMixin):

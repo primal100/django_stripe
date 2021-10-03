@@ -134,19 +134,6 @@ def restrict_products(settings):
     settings.STRIPE_ALLOW_DEFAULT_PRODUCT_ONLY = True
 
 
-@pytest.fixture
-def restrict_prices(settings, stripe_price_id):
-    settings.STRIPE_AVAILABLE_PRICES = [stripe_price_id]
-
-
-@pytest.fixture(params=["product", "price"])
-def restrict_product_or_price(request, settings, stripe_price_id):
-    if request.param == 'product':
-        settings.STRIPE_ALLOW_DEFAULT_PRODUCT_ONLY = True
-    else:
-        settings.STRIPE_AVAILABLE_PRICES = [stripe_price_id]
-
-
 def create_customer_id(user):
     customers = stripe.Customer.list(email=user.email)
     for customer in customers:
@@ -651,7 +638,12 @@ def non_existing_price_id() -> str:
 
 @pytest.fixture
 def non_existing_price_id_error(non_existing_price_id) -> Dict[str, str]:
-    return {'detail': f"No such price: '{non_existing_price_id}'"}
+    return {'detail': f"Attempt to access non-existing price id '{non_existing_price_id}'"}
+
+
+@pytest.fixture
+def restricted_product_error(stripe_unsubscribed_product_id) -> Dict[str, str]:
+    return {'detail': f'Cannot access product {stripe_unsubscribed_product_id}'}
 
 
 def get_invoice_error(invoice_id: str) -> Dict[str, Any]:

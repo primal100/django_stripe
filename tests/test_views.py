@@ -33,8 +33,8 @@ def test_checkout_non_existing_price(authenticated_client, non_existing_price_id
 
 
 @pytest.mark.django_db
-def test_checkout_restricted_product_or_price(authenticated_client, stripe_unsubscribed_price_id, stripe_public_key,
-                                              stripe_price_id, checkout_session_data, restrict_product_or_price):
+def test_checkout_restricted_product(authenticated_client, stripe_unsubscribed_price_id, stripe_public_key,
+                                              stripe_price_id, checkout_session_data, restrict_products):
     response = make_request(authenticated_client.get,
                             'go-to-checkout',
                             200,

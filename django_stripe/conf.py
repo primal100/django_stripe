@@ -56,10 +56,6 @@ class Settings:
         return getattr(django_settings, 'STRIPE_ALLOW_DEFAULT_PRODUCT_ONLY', False)
 
     @property
-    def STRIPE_AVAILABLE_PRICES(self) -> Optional[str]:
-        return getattr(django_settings, 'STRIPE_AVAILABLE_PRICES', None)
-
-    @property
     def STRIPE_SUBSCRIPTION_CACHE_NAME(self) -> Optional[str]:
         return getattr(django_settings, 'STRIPE_SUBSCRIPTION_CACHE_NAME', 'default')
 

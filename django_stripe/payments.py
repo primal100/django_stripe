@@ -103,7 +103,7 @@ def create_subscription_checkout(user: subscriptions.types.UserProtocol, price_i
     try:
         retrieve_price(user, price_id, rest=rest)            # To check that price is allowed depending on settings
     except stripe.error.InvalidRequestError:
-        raise raise_appropriate_not_found(rest, f'Attempt to access non-existing price id {price_id}')
+        raise raise_appropriate_not_found(rest, f"Attempt to access non-existing price id '{price_id}'")
     logger.debug('Creating new subscription checkout session for user %s', user.id)
     return create_checkout(user, subscriptions.create_subscription_checkout, price_id=price_id, **kwargs)
 
@@ -128,12 +128,6 @@ def create_billing_portal(user) -> stripe.billing_portal.Session:
     return session
 
 
-def filter_prices_from_product(product: Dict[str, Any]) -> Dict[str, Any]:
-    if settings.STRIPE_AVAILABLE_PRICES:
-        product['prices'] = list(filter(lambda price: price['id'] in settings.STRIPE_AVAILABLE_PRICES, product['prices']))
-    return product
-
-
 @get_actual_user
 def get_products(user, ids: List[str] = None, price_kwargs: Dict[str, Any] = None, rest: bool = False,
                  **kwargs) -> List[Dict[str, Any]]:
@@ -142,8 +136,7 @@ def get_products(user, ids: List[str] = None, price_kwargs: Dict[str, Any] = Non
             if not product == settings.STRIPE_DEFAULT_SUBSCRIPTION_PRODUCT_ID:
                 raise_appropriate_permission_denied(rest, f"Cannot access product {product}")
         ids = [settings.STRIPE_DEFAULT_SUBSCRIPTION_PRODUCT_ID]
-    products = subscriptions.get_subscription_products_and_prices(user, ids=ids, price_kwargs=price_kwargs, **kwargs)
-    return [filter_prices_from_product(product) for product in products]
+    return subscriptions.get_subscription_products_and_prices(user, ids=ids, price_kwargs=price_kwargs, **kwargs)
 
 
 @get_actual_user
@@ -153,8 +146,6 @@ def get_prices(user, product: str = None, currency: str = None, rest: bool = Fal
             raise_appropriate_permission_denied(rest, f"Cannot access product {product}")
         product = settings.STRIPE_DEFAULT_SUBSCRIPTION_PRODUCT_ID
     result = subscriptions.get_subscription_prices(user, product=product, currency=currency, **kwargs)
-    if settings.STRIPE_AVAILABLE_PRICES:
-        return list(filter(lambda price: price['id'] in settings.STRIPE_AVAILABLE_PRICES, result))
     return result
 
 
@@ -163,14 +154,11 @@ def retrieve_product(user, obj_id: str, price_kwargs: Optional[Dict[str, Any]] =
                      rest: bool = False) -> Dict[str, Any]:
     if settings.STRIPE_ALLOW_DEFAULT_PRODUCT_ONLY and not obj_id == settings.STRIPE_DEFAULT_SUBSCRIPTION_PRODUCT_ID:
         raise_appropriate_permission_denied(rest, f"Cannot access product {obj_id}")
-    product = subscriptions.retrieve_product(user, obj_id, price_kwargs=price_kwargs)
-    return filter_prices_from_product(product)
+    return subscriptions.retrieve_product(user, obj_id, price_kwargs=price_kwargs)
 
 
 @get_actual_user
 def retrieve_price(user, obj_id: str, rest: bool = False) -> Dict[str, Any]:
-    if settings.STRIPE_AVAILABLE_PRICES and obj_id not in settings.STRIPE_AVAILABLE_PRICES:
-        raise_appropriate_permission_denied(rest, f"Cannot access product {obj_id}")
     price = subscriptions.retrieve_price(user, obj_id)
     if settings.STRIPE_ALLOW_DEFAULT_PRODUCT_ONLY and not price['product'] == settings.STRIPE_DEFAULT_SUBSCRIPTION_PRODUCT_ID:
         raise_appropriate_permission_denied(rest, f"Cannot access price {obj_id}")

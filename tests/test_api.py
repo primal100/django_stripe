@@ -3,6 +3,7 @@ import stripe
 
 from django_stripe.tests import assert_customer_id_exists, make_request
 from django_stripe import payments, signals
+from rest_framework.exceptions import PermissionDenied
 
 
 @pytest.mark.django_db
@@ -33,10 +34,19 @@ def test_checkout_non_existing_price(authenticated_client_with_without_customer_
                                      non_existing_price_id, non_existing_price_id_error):
     response = make_request(authenticated_client_with_without_customer_id.post,
                             'checkout',
-                            500,
+                            404,
                             url_params={'price_id': non_existing_price_id})
     assert response.data == non_existing_price_id_error
-    assert_customer_id_exists(user)
+
+
+@pytest.mark.django_db
+def test_checkout_restrict_product(authenticated_client_with_without_customer_id, user, stripe_unsubscribed_price_id,
+                                   non_existing_price_id_error, restrict_products):
+    response = make_request(authenticated_client_with_without_customer_id.post,
+                            'checkout',
+                            403,
+                            url_params={'price_id': stripe_unsubscribed_price_id})
+    assert response.data == non_existing_price_id_error
 
 
 @pytest.mark.django_db
@@ -61,7 +71,7 @@ def test_billing_portal(authenticated_client_with_without_customer_id, user):
     ('get', 'subscriptions', False),
     ('post', 'setup-intents', False)
 ])
-def test_unauthenticated(api_client, method, view, price_id_as_url_params, stripe_price_id):
+def test_unauthenticated_requests_blocked(api_client, method, view, price_id_as_url_params, stripe_price_id):
     method = getattr(api_client, method)
     url_params = {'price_id': stripe_price_id} if price_id_as_url_params else None
     response = make_request(method,
@@ -111,6 +121,24 @@ def test_price_get_one(client_no_user_and_user_with_and_without_stripe_id,
 
 
 @pytest.mark.django_db
+def test_price_get_restrict_products(authenticated_client_with_customer_id, stripe_subscription_product_id,
+                                     stripe_unsubscribed_product_id, expected_subscription_prices,
+                                     subscription, restrict_products, stripe_price_id,
+                                     stripe_unsubscribed_price_id, restricted_price_error, restricted_product_error):
+    response = make_request(authenticated_client_with_customer_id.get, 'prices', 200)
+    assert response.data == expected_subscription_prices
+    response = make_request(authenticated_client_with_customer_id.get, 'prices', 403,
+                            product=stripe_unsubscribed_product_id)
+    assert response.data == restricted_product_error
+    response = make_request(authenticated_client_with_customer_id.get, 'prices', 200,
+                            url_params={'obj_id': stripe_price_id})
+    assert response.data == expected_subscription_prices[0]
+    response = make_request(authenticated_client_with_customer_id.get, 'prices', 403,
+                            url_params={'obj_id': stripe_unsubscribed_price_id})
+    assert response.data == restricted_price_error
+
+
+@pytest.mark.django_db
 def test_product_list(client_no_user_and_user_with_and_without_stripe_id,
                       expected_subscription_products_and_prices_unsubscribed,
                       stripe_subscription_product_id, stripe_unsubscribed_product_id):
@@ -143,6 +171,24 @@ def test_product_list_non_existing_product(client, non_existing_product_id):
     response = make_request(client.get, 'products', 200,
                             ids=[non_existing_product_id])
     assert response.data == []
+
+
+@pytest.mark.django_db
+def test_product_restrict_products(authenticated_client_with_customer_id, stripe_subscription_product_id,
+                                   restrict_products, stripe_unsubscribed_product_id,
+                                   expected_restricted_product, subscription, stripe_price_id,
+                                   restricted_product_error, stripe_unsubscribed_price_id):
+    response = make_request(authenticated_client_with_customer_id.get, 'products', 200)
+    assert response.data == expected_restricted_product
+    response = make_request(authenticated_client_with_customer_id.get, 'products', 403,
+                            ids=[stripe_unsubscribed_product_id])
+    assert response.data == restricted_product_error
+    response = make_request(authenticated_client_with_customer_id.get, 'products', 200,
+                            url_params={'obj_id': stripe_subscription_product_id})
+    assert response.data == expected_restricted_product[0]
+    response = make_request(authenticated_client_with_customer_id.get, 'products', 403,
+                            url_params={'obj_id': stripe_unsubscribed_product_id})
+    assert response.data == restricted_product_error
 
 
 @pytest.mark.django_db
