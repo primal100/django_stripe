@@ -9,6 +9,7 @@ from rest_framework.views import APIView
 from .conf import settings
 from . import serializers
 from . import payments
+from .forms import BillingDetailsForm
 from .utils import get_user_if_token_user
 from .logging import logger
 from .view_mixins import StripeListMixin, StripeCreateMixin, StripeCreateWithSerializerMixin, StripeModifyMixin, StripeDeleteMixin
@@ -164,8 +165,8 @@ class GoToBillingPortalView(LoginRequiredMixin, RedirectView):
         return session['url']
 
 
-class PaymentPortalView(LoginRequiredMixin, TemplateView):
-    template_name = 'django_stripe/subscription_form.html'
+class SubscriptionPortalView(LoginRequiredMixin, TemplateView):
+    template_name = 'django_stripe/subscription_portal.html'
     product_id: str = None
 
     def get_product_id(self) -> str:
@@ -176,20 +177,35 @@ class PaymentPortalView(LoginRequiredMixin, TemplateView):
             payments.create_customer(request.user)
         return super().get(request, *args, **kwargs)
 
+    def get_default_country(self):
+        country = None
+        if settings.COUNTRY_HEADER:
+            country = self.request.META.get(settings.COUNTRY_HEADER, '')
+        if not country:
+            country = settings.STRIPE_CHECKOUT_DEFAULT_COUNTRY
+        return country or "US"
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         user = get_user_if_token_user(self.request.user)
         product_id = self.get_product_id()
         logger.debug("Opening payments portal for user %d, product %s", user.id, product_id)
-        context['payment_methods'] = list(payments.list_payment_methods(user, settings.STRIPE_PAYMENT_METHOD_TYPES))
+        context['existing_payment_methods'] = list(payments.list_payment_methods(user, settings.STRIPE_PAYMENT_METHOD_TYPES))
         context['product'] = payments.retrieve_product(user, product_id)
         context['user'] = user
-        context['js_vars'] = {
+        context['collect_billing_data'] = settings.STRIPE_CHECKOUT_COLLECT_BILLING_DATA
+        context['form'] = BillingDetailsForm
+        context['dev_mode'] = settings.STRIPE_CHECKOUT_DEV_MODE and 'test' in settings.STRIPE_PUBLISHABLE_KEY
+        context['js_config'] = {
+            'user_email': user.email,
+            'country': self.get_default_country(),
+            'collect_billing_data': settings.STRIPE_CHECKOUT_COLLECT_BILLING_DATA,
             'hide_postal_code': settings.STRIPE_CREDIT_CARD_HIDE_POSTAL_CODE,
-            'stripe_public_key': settings.STRIPE_PUBLISHABLE_KEY,
-            'has_payment_methods': bool(context['payment_methods']),
+            'stripePublishableKey': settings.STRIPE_PUBLISHABLE_KEY,
+            'has_existing_payment_methods': bool(context['existing_payment_methods']),
+            'paymentMethods': settings.STRIPE_PAYMENT_METHOD_TYPES,
+            'payment_methods_url': reverse("payment-methods"),
             'subscription_api_url': reverse("subscriptions"),
             'setup_intents_url': reverse("setup-intents")
         }
-        print(context['js_vars'])
         return context

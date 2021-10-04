@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
+    'material',
     'django_stripe',
     'tests.django_stripe_testapp'
 ]

@@ -232,6 +232,35 @@ def test_payment_method_get_one_wrong_user(authenticated_client_second_user, def
 
 
 @pytest.mark.django_db
+def test_modify_payment_method(authenticated_client_with_customer_id,
+                               user_with_customer_id,
+                               payment_method_from_api):
+    pm_id = payment_method_from_api['id']
+    billing_details = {
+                                'address': {
+                                    'city': 'Castleknock',
+                                    'state': 'Co. Dublin',
+                                    'country': 'IE',
+                                    'line1': 'Áras an Uachtaráin',
+                                    'line2': 'Phoenix Park',
+                                    'postal_code': 'D08 E1W3',
+                                },
+                                'name': 'Michael D Higgins',
+                                'email': 'MichaelD@president.ie',
+                                'phone': '+35312345678'
+                            }
+    response = make_request(authenticated_client_with_customer_id.put, "payment-methods", 200,
+                            url_params={'obj_id': pm_id}, set_as_default=True,
+                            billing_details=billing_details)
+    updated_payment_method_info = response.data
+    payment_method_from_api['billing_details'] = billing_details
+    payment_method_from_api.pop('default')
+    payment_method_from_api['card']['checks']['address_line1_check'] = "pass"
+    payment_method_from_api['card']['checks']['address_postal_code_check'] = "pass"
+    assert updated_payment_method_info == payment_method_from_api
+
+
+@pytest.mark.django_db
 def test_change_default_payment_method(authenticated_client_with_customer_id,
                                        user_with_customer_id,
                                        default_payment_method_from_api,

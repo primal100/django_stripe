@@ -77,7 +77,8 @@ def modify_payment_method(user: DjangoUserProtocol, obj_id: str, set_as_default:
         logger.debug('Setting default method for user %s to %s with keys: %s', user.id, obj_id, list(kwargs.keys()))
         modify_customer(user, invoice_settings={
             'default_payment_method': obj_id})
-        return retrieve(user, stripe.PaymentMethod, obj_id)
+        if not kwargs:
+            return retrieve(user, stripe.PaymentMethod, obj_id)
     logger.debug('Modifying payment method %s for user %s', user.id, obj_id)
     return modify(user, stripe.PaymentMethod, obj_id, **kwargs)
 

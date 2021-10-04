@@ -16,7 +16,7 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 from django.urls import re_path
-from django_stripe.views import GoToSetupCheckoutView, GoToCheckoutView, GoToBillingPortalView, PaymentPortalView
+from django_stripe.views import GoToSetupCheckoutView, GoToCheckoutView, GoToBillingPortalView, SubscriptionPortalView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -25,5 +25,5 @@ urlpatterns = [
     re_path('^checkout/(?P<price_id>.*)/', GoToCheckoutView.as_view(), name='go-to-checkout'),
     re_path(r'^setup-checkout/(?:/(?P<subscription_id>.*)/)?', GoToSetupCheckoutView.as_view(), name='go-to-setup-checkout'),
     re_path(r'^billing-portal/', GoToBillingPortalView.as_view(), name='go-to-billing-portal'),
-    re_path(r'', PaymentPortalView.as_view(), name='payment-poral'),
+    re_path(r'', SubscriptionPortalView.as_view(), name='payment-poral'),
 ]

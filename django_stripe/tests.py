@@ -42,7 +42,7 @@ def get_url(view, **url_params: Dict[str, Any]):
 def make_request(method: Callable, view: str, expected_status_code: int, url_params: Dict[str, Any] = None,
                  signal: Signal = None, **kwargs):
     url = get_url(view, **url_params or {})
-    response = method(url, data=kwargs or None)
+    response = method(url, data=kwargs or None, format="json")
     assert_status_code_equals(response, expected_status_code)
     if signal:
         assert_signal_called(signal)

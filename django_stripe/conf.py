@@ -78,6 +78,23 @@ class Settings:
         return getattr(django_settings, 'STRIPE_CREDIT_CARD_HIDE_POSTAL_CODE', False)
 
     @property
+    def STRIPE_CHECKOUT_COLLECT_BILLING_DATA(self) -> bool:
+        return getattr(django_settings, 'STRIPE_CHECKOUT_COLLECT_BILLING_DATA', True)
+
+    @property
+    def STRIPE_CHECKOUT_DEV_MODE(self) -> bool:
+        # Note that this will be overridden if test does not appear in the Stripe Publishable key
+        return getattr(django_settings, 'STRIPE_CHECKOUT_DEV_MODE', os.environ.get('STRIPE_CHECKOUT_DEV_MODE', True))
+
+    @property
+    def STRIPE_CHECKOUT_DEFAULT_COUNTRY(self) -> bool:
+        return getattr(django_settings, 'STRIPE_CHECKOUT_COLLECT_BILLING_DATA', "US")
+
+    @property
+    def COUNTRY_HEADER(self) -> bool:
+        return getattr(django_settings, 'STRIPE_GET_COUNTRY_HEADER ', None)
+
+    @property
     def STRIPE_SUBSCRIPTION_CACHE_NAME(self) -> Optional[str]:
         return getattr(django_settings, 'STRIPE_SUBSCRIPTION_CACHE_NAME', 'default')
 
