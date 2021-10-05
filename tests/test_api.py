@@ -330,6 +330,7 @@ def test_new_subscription(authenticated_client_with_customer_id, stripe_price_id
     response = make_request(authenticated_client_with_customer_id.post, "subscriptions", 201,
                             signal=signals.subscription_created, price_id=stripe_price_id,
                             default_payment_method=payment_method_id, **data)
+    sub_id = response.data['id']
     assert response.data.pop('current_period_end') is not None
     assert response.data.pop('current_period_start') is not None
     assert response.data.pop('id') is not None
@@ -338,7 +339,7 @@ def test_new_subscription(authenticated_client_with_customer_id, stripe_price_id
     assert response.data.pop('created') is not None
     assert response.data == new_subscription_response_alternative_payment_method
     response = payments.is_subscribed_and_cancelled_time(user_with_customer_id, stripe_subscription_product_id)
-    assert response['subscribed'] is True
+    assert response['sub_id']  == sub_id
     assert response['cancel_at'] is None
     customer = stripe.Customer.retrieve(user_with_customer_id.stripe_customer_id)
     assert customer['invoice_settings']['default_payment_method'] == customer_default_payment_method_or_none
@@ -352,7 +353,7 @@ def test_new_subscription_change_default_payment_method_with_no_payment_method(
                             price_id=stripe_price_id, set_as_default_payment_method=True)
     assert response.data == no_default_payment_method_to_set_as_default_error
     response = payments.is_subscribed_and_cancelled_time(user_with_customer_id, stripe_subscription_product_id)
-    assert response['subscribed'] is False
+    assert response['sub_id'] is None
     assert response['cancel_at'] is None
     customer = stripe.Customer.retrieve(user_with_customer_id.stripe_customer_id)
     assert customer['invoice_settings']['default_payment_method'] == None
@@ -383,7 +384,7 @@ def test_new_subscription_no_payment_method(authenticated_client_with_customer_i
                             price_id=stripe_price_id)
     assert response.data == no_default_payment_method_error
     response = payments.is_subscribed_and_cancelled_time(user_with_customer_id, stripe_subscription_product_id)
-    assert response['subscribed'] is False
+    assert response['sub_id'] is None
     assert response['cancel_at'] is None
 
 
@@ -399,6 +400,7 @@ def test_modify_subscription(authenticated_client_with_customer_id, stripe_subsc
     response = make_request(authenticated_client_with_customer_id.put, "subscriptions", 200,
                             signal=signals.subscription_modified, url_params={'obj_id': subscription['id']},
                             default_payment_method=payment_method_id, **data)
+    sub_id = response.data['id']
     assert response.data.pop('current_period_start') is not None
     assert response.data.pop('id') is not None
     assert response.data.pop('latest_invoice') is not None
@@ -406,7 +408,7 @@ def test_modify_subscription(authenticated_client_with_customer_id, stripe_subsc
     assert response.data.pop('created') is not None
     assert response.data == subscription_response_alternative_payment_method
     response = payments.is_subscribed_and_cancelled_time(user_with_customer_id, stripe_subscription_product_id)
-    assert response['subscribed'] is True
+    assert response['sub_id'] == sub_id
     assert response['cancel_at'] is None
     customer = stripe.Customer.retrieve(user_with_customer_id.stripe_customer_id)
     assert customer['invoice_settings']['default_payment_method'] == customer_default_payment_methods
@@ -460,7 +462,7 @@ def test_delete_subscription(authenticated_client_with_customer_id, stripe_subsc
                             signal=signals.subscription_cancelled, url_params={'obj_id': subscription['id']})
     assert response.data is None
     response = payments.is_subscribed_and_cancelled_time(user_with_customer_id, stripe_subscription_product_id)
-    assert response['subscribed'] is False
+    assert response['sub_id'] is None
     assert response['cancel_at'] is None
 
 
@@ -475,12 +477,12 @@ def test_delete_non_existing_subscription(authenticated_client_with_customer_id,
 @pytest.mark.django_db
 def test_delete_other_user_subscription(authenticated_client_second_user, user_with_customer_id,
                                         stripe_subscription_product_id, payment_method_id,
-                                        subscription, not_owned_subscription_error):
+                                        subscription_id, not_owned_subscription_error):
     response = make_request(authenticated_client_second_user.delete, "subscriptions", 500,
-                            url_params={'obj_id': subscription['id']})
+                            url_params={'obj_id': subscription_id})
     assert response.data == not_owned_subscription_error
     response = payments.is_subscribed_and_cancelled_time(user_with_customer_id, stripe_subscription_product_id)
-    assert response['subscribed'] is True
+    assert response['sub_id'] == subscription_id
     assert response['cancel_at'] is None
 
 

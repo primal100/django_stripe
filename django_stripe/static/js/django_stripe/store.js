@@ -47,7 +47,7 @@ async function createSubscription(paymentMethodId) {
 
 async function modifySubscription(subscriptionId, paymentMethodId) {
   try {
-    const response = await fetch(`${subscriptionUrl}/${subscriptionId}`, {
+    const response = await fetch(`${subscriptionUrl}${subscriptionId}/`, {
       method: 'PUT',
       headers: headers,
       body: JSON.stringify({
@@ -68,7 +68,7 @@ async function modifySubscription(subscriptionId, paymentMethodId) {
 
 async function cancelSubscription(subscriptionId) {
   try {
-    const response = await fetch(`${subscriptionUrl}/${subscriptionId}` , {
+    const response = await fetch(`${subscriptionUrl}${subscriptionId}/` , {
       method: 'DELETE',
       headers: headers
     });

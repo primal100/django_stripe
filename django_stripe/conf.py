@@ -63,11 +63,11 @@ class Settings:
         return getattr(django_settings, 'STRIPE_FREE_ACCESS_PRICE_ID', None)
 
     @property
-    def STRIPE_DEFAULT_SUBSCRIPTION_PRODUCT_ID(self) -> Optional[str]:
-        try:
-            return getattr(django_settings, 'STRIPE_DEFAULT_SUBSCRIPTION_PRODUCT_ID', os.environ['STRIPE_DEFAULT_SUBSCRIPTION_PRODUCT_ID'])
-        except KeyError:
+    def STRIPE_DEFAULT_SUBSCRIPTION_PRODUCT_ID(self) -> str:
+        value = getattr(django_settings, 'STRIPE_DEFAULT_SUBSCRIPTION_PRODUCT_ID', None) or os.environ.get('STRIPE_DEFAULT_SUBSCRIPTION_PRODUCT_ID')
+        if not value:
             raise ConfigurationException('STRIPE_DEFAULT_SUBSCRIPTION_PRODUCT_ID')
+        return value
 
     @property
     def STRIPE_ALLOW_DEFAULT_PRODUCT_ONLY(self) -> Optional[str]:

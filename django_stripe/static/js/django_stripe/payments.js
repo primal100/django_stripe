@@ -7,7 +7,7 @@
   const form = document.getElementById('payment-form');
   const submitButton = document.querySelector('.payment-button');
   const confirmationElement = document.getElementById('confirmation');
-
+h
   // Global variable to store the submit button text.
   let submitButtonPayText = 'Pay';
 
@@ -71,6 +71,21 @@
     // Re-enable the Pay button.
     submitButton.disabled = false;
   });
+
+  function onError(message){
+      if (message) {
+        confirmationElement.querySelector('.error-message').innerText = message;
+      }
+       mainElement.classList.add('error');
+  }
+
+  function onSuccess(message){
+      if (message) {
+        confirmationElement.querySelector('.error-message').innerText = message;
+      }
+       mainElement.classList.add('success');
+  }
+
 
   // Listen to changes to the user-selected country.
   form
@@ -136,15 +151,14 @@
       console.log('Subscribing')
       const response = await createSubscription(paymentMethod);
       if (response.error) {
-         confirmationElement.querySelector('.error-message').innerText = error.message;
-         mainElement.classList.add('error');
-
+        onError(response.error.message)
       }else{
           mainElement.classList.add('success');
       }
       console.log(response);
     }
   });
+
 
   // Handle payment setup result
   const handleCardSetupResponse = (handleCardSetupResponse) => {
@@ -329,4 +343,27 @@
   // Select the default country from the config on page load.
   let country = config.country;
   selectCountry(country);
+
+  let dialog = document.querySelector('#cancel-subscription-dialog');
+  let showDialogButton = document.querySelector('#show-cancellation-dialog');
+    showDialogButton.addEventListener('click', function() {
+      dialog.showModal();
+    });
+    dialog.querySelector('.close').addEventListener('click', function() {
+      dialog.close();
+    });
+    dialog.querySelector('#cancel-subscription-confirm-button').addEventListener('click', async function() {
+      const result = await cancelSubscription(config.subscriptionInfo.sub_id);
+      if (result.error) {
+         confirmationElement.querySelector('.error-message').innerText = result.error.message;
+         mainElement.classList.add('error');
+
+      }else{
+          confirmationElement.querySelector('.note').innerText =
+        `Your subscription will be cancelled on ${response.cancel_at}. Sorry to see you go.`;
+          mainElement.classList.add('success');
+      }
+      dialog.close();
+    });
 })();
+

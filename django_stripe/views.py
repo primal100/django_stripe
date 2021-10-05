@@ -1,3 +1,5 @@
+import datetime
+
 import stripe
 from django.views.generic import RedirectView, TemplateView
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -13,7 +15,7 @@ from .forms import BillingDetailsForm
 from .utils import get_user_if_token_user
 from .logging import logger
 from .view_mixins import StripeListMixin, StripeCreateMixin, StripeCreateWithSerializerMixin, StripeModifyMixin, StripeDeleteMixin
-from typing import Dict, Any, List, Iterable
+from typing import Dict, Any, List, Iterable, Optional
 
 
 class StripePriceCheckoutView(APIView, StripeCreateMixin):
@@ -168,6 +170,7 @@ class GoToBillingPortalView(LoginRequiredMixin, RedirectView):
 class SubscriptionPortalView(LoginRequiredMixin, TemplateView):
     template_name = 'django_stripe/subscription_portal.html'
     product_id: str = None
+    date_format: str = "%A %d %B %Y"
 
     def get_product_id(self) -> str:
         return self.product_id or settings.STRIPE_DEFAULT_SUBSCRIPTION_PRODUCT_ID
@@ -185,6 +188,11 @@ class SubscriptionPortalView(LoginRequiredMixin, TemplateView):
             country = settings.STRIPE_CHECKOUT_DEFAULT_COUNTRY
         return country or "US"
 
+    def timestamp_format(self, timestamp: Optional[int]):
+        if timestamp:
+            return datetime.datetime.fromtimestamp(timestamp).strftime(self.date_format)
+        return None
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         user = get_user_if_token_user(self.request.user)
@@ -192,12 +200,15 @@ class SubscriptionPortalView(LoginRequiredMixin, TemplateView):
         logger.debug("Opening payments portal for user %d, product %s", user.id, product_id)
         context['existing_payment_methods'] = list(payments.list_payment_methods(user, settings.STRIPE_PAYMENT_METHOD_TYPES))
         context['product'] = payments.retrieve_product(user, product_id)
+        context['product']['subscription_info']['current_period_end'] = self.timestamp_format(context['product']['subscription_info']['current_period_end'])
+        context['product']['subscription_info']['cancel_at'] = self.timestamp_format(context['product']['subscription_info']['cancel_at'])
         context['user'] = user
         context['collect_billing_data'] = settings.STRIPE_CHECKOUT_COLLECT_BILLING_DATA
         context['form'] = BillingDetailsForm
         context['dev_mode'] = settings.STRIPE_CHECKOUT_DEV_MODE and 'test' in settings.STRIPE_PUBLISHABLE_KEY
         context['title'] = settings.STRIPE_CHECKOUT_TITLE
         context['js_config'] = {
+            'subscriptionInfo': context['product']['subscription_info'],
             'user_email': user.email,
             'country': self.get_default_country(),
             'collect_billing_data': settings.STRIPE_CHECKOUT_COLLECT_BILLING_DATA,
