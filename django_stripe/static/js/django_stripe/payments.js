@@ -5,7 +5,8 @@
 
   // Create references to the main form and its submit button.
   const form = document.getElementById('payment-form');
-  const submitButton = form.querySelector('button[type=submit]');
+  const submitButton = document.querySelector('.payment-button');
+  const confirmationElement = document.getElementById('confirmation');
 
   // Global variable to store the submit button text.
   let submitButtonPayText = 'Pay';
@@ -80,94 +81,117 @@
     });
 
   // Submit handler for our payment form.
-  form.addEventListener('submit', async (event) => {
+  submitButton.addEventListener('click', async (event) => {
     event.preventDefault();
+    console.log('Running submit');
 
-    // Retrieve the user information from the form.
-    const name = form.querySelector('input[name=name]').value;
-    const country = form.querySelector('select[name=country] option:checked')
-      .value;
-    const email = config.user_email;
-    const billingAddress = {
-      line1: form.querySelector('input[name=address]').value,
-      postal_code: form.querySelector('input[name=postal_code]').value,
-      city: form.querySelector('input[name=city]').value,
-      state: form.querySelector('input[name=state]').value,
-    };
     // Disable the Pay button to prevent multiple click events.
     submitButton.disabled = true;
     submitButton.textContent = 'Processing…';
 
-    // Let Stripe.js handle the confirmation of the PaymentIntent with the card Element.
     let paymentMethod = getSelectedPaymentMethod();
+    console.log(paymentMethod);
     if (!paymentMethod){
-      let setupIntent = await createSetupIntent();
-      console.log("confirming card setup with setupIntent", setupIntent);
-      const response = await stripe.confirmCardSetup(
-        setupIntent.client_secret,
-          {
-            payment_method: {
-              card,
-              billing_details: {
-                name,
-                email,
-                address: billingAddress,
-              },
-            },
-      })
-      setupIntent = response.setupIntent;
-      paymentMethod = setupIntent.payment_method;
+        // Let Stripe.js handle the confirmation of the SetupIntent with the card Element.
+        const valid = form.reportValidity();
+        if (valid) {
+          // Retrieve the user information from the form.
+          const name = form.querySelector('input[name=name]').value;
+          const email = config.user_email;
+          const billingAddress = {
+            country: form.querySelector('select[name=country] option:checked').value,
+            line1: form.querySelector('input[name=address]').value,
+            postal_code: form.querySelector('input[name=postal_code]').value,
+            city: form.querySelector('input[name=city]').value,
+            state: form.querySelector('input[name=state]').value,
+          };
+
+          setupIntent = setupIntent || await createSetupIntent();
+          console.log("confirming card setup with setupIntent", setupIntent);
+          const response = await stripe.confirmCardSetup(
+              setupIntent.client_secret,
+              {
+                payment_method: {
+                  card,
+                  billing_details: {
+                    name,
+                    email,
+                    address: billingAddress,
+                  },
+                },
+              })
+          const cardSetupSuccessful = handleCardSetupResponse(response);
+          setupIntent = response.setupIntent;
+          if (cardSetupSuccessful) {
+            paymentMethod = setupIntent.payment_method;
+            setupIntent = null;
+          }
+        }else{
+            submitButton.disabled = false;
+            submitButton.textContent = submitButtonPayText;
+        }
     }
 
-    const response = await createSubscription(paymentMethod);
-    handleSubscriptionResponse(response);
+    if (paymentMethod) {
+      console.log('Subscribing')
+      const response = await createSubscription(paymentMethod);
+      if (response.error) {
+         confirmationElement.querySelector('.error-message').innerText = error.message;
+         mainElement.classList.add('error');
 
+      }else{
+          mainElement.classList.add('success');
+      }
+      console.log(response);
+    }
   });
 
-  // Handle new subscription result
-  const handleSubscriptionResponse = (paymentResponse) => {
-    const {paymentIntent, error} = paymentResponse;
+  // Handle payment setup result
+  const handleCardSetupResponse = (handleCardSetupResponse) => {
+    const {setupIntent, error} = handleCardSetupResponse;
 
     const mainElement = document.getElementById('main');
-    const confirmationElement = document.getElementById('confirmation');
 
     if (error && error.type === 'validation_error') {
       mainElement.classList.remove('processing');
       mainElement.classList.remove('receiver');
       submitButton.disabled = false;
       submitButton.textContent = submitButtonPayText;
+      return false;
     } else if (error) {
       mainElement.classList.remove('processing');
       mainElement.classList.remove('receiver');
       confirmationElement.querySelector('.error-message').innerText =
         error.message;
       mainElement.classList.add('error');
-    } else if (paymentIntent.status === 'succeeded') {
+      return false;
+    } else if (setupIntent.status === 'succeeded') {
       // Success! Payment is confirmed. Update the interface to display the confirmation screen.
       mainElement.classList.remove('processing');
       mainElement.classList.remove('receiver');
-      // Update the note about receipt and shipping (the payment has been fully confirmed by the bank).
+      // Update the note about successful subscription.
       confirmationElement.querySelector('.note').innerText =
-        'We just sent your receipt to your email address, and your items will be on their way shortly.';
-      mainElement.classList.add('success');
-    } else if (paymentIntent.status === 'processing') {
-      // Success! Now waiting for payment confirmation. Update the interface to display the confirmation screen.
+        'Your payment details have been confirmed.';
+      return true;
+    } else if (setupIntent.status === 'processing') {
+      // Success! Now waiting for payment method confirmation.
       mainElement.classList.remove('processing');
-      // Update the note about receipt and shipping (the payment is not yet confirmed by the bank).
       confirmationElement.querySelector('.note').innerText =
-        'We’ll send your receipt and ship your items as soon as your payment is confirmed.';
-      mainElement.classList.add('success');
-    } else if (paymentIntent.status === 'requires_payment_method') {
+        'Your subscription will become active soon as your payment method is confirmed.';
+      return true;
+    } else if (setupIntent.status === 'requires_payment_method') {
       // Failure. Requires new PaymentMethod, show last payment error message.
       mainElement.classList.remove('processing');
-      confirmationElement.querySelector('.error-message').innerText = paymentIntent.last_payment_error || 'Payment failed';
+      confirmationElement.querySelector('.error-message').innerText = setupIntent.last_setup_error || 'Payment failed';
       mainElement.classList.add('error');
+      return false;
     } else {
-      // Payment has failed.
+      // Payment method setup has failed.
       mainElement.classList.remove('success');
       mainElement.classList.remove('processing');
       mainElement.classList.remove('receiver');
       mainElement.classList.add('error');
+      return false;
     }
   };
 

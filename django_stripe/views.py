@@ -196,6 +196,7 @@ class SubscriptionPortalView(LoginRequiredMixin, TemplateView):
         context['collect_billing_data'] = settings.STRIPE_CHECKOUT_COLLECT_BILLING_DATA
         context['form'] = BillingDetailsForm
         context['dev_mode'] = settings.STRIPE_CHECKOUT_DEV_MODE and 'test' in settings.STRIPE_PUBLISHABLE_KEY
+        context['title'] = settings.STRIPE_CHECKOUT_TITLE
         context['js_config'] = {
             'user_email': user.email,
             'country': self.get_default_country(),
