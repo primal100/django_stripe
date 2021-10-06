@@ -11,3 +11,11 @@ input {
 select {
   display: initial;
 }
+
+.container {
+ width:initial;
+}
+
+.card-content {
+  max-height: 75px;
+}

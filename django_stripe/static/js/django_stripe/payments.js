@@ -88,6 +88,11 @@
     return string.charAt(0).toUpperCase() + string.slice(1);
   }
 
+  function scrollToElem(selector){
+    const rect = document.querySelector(selector).getBoundingClientRect();
+    scrollTo({top: rect.y, left: rect.x, behavior: 'smooth'})
+  }
+
   function onError(message){
       if (message) {
         confirmationElement.querySelector('.error-message').innerText = capitalizeFirstLetter(message);
@@ -347,7 +352,8 @@
     selectedPriceId = priceElem.id;
     document.querySelector('.total-price').textContent = getPriceText(priceElem);
     toggleSummary();
-    const firstFieldElem = document.querySelector('.first-field');
+    const firstFieldElem = document.querySelector('input');
+    scrollToElem('input[name=name]');
     firstFieldElem.focus();
   }
 
