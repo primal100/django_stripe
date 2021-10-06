@@ -457,10 +457,10 @@ def test_modify_other_user_subscription(authenticated_client_second_user,
 
 @pytest.mark.django_db
 def test_delete_subscription(authenticated_client_with_customer_id, stripe_subscription_product_id,
-                             user_with_customer_id, subscription):
-    response = make_request(authenticated_client_with_customer_id.delete, "subscriptions", 204,
-                            signal=signals.subscription_cancelled, url_params={'obj_id': subscription['id']})
-    assert response.data is None
+                             user_with_customer_id, subscription_id):
+    response = make_request(authenticated_client_with_customer_id.delete, "subscriptions", 200,
+                            signal=signals.subscription_cancelled, url_params={'obj_id': subscription_id})
+    assert response.data['status'] == 'canceled'
     response = payments.is_subscribed_and_cancelled_time(user_with_customer_id, stripe_subscription_product_id)
     assert response['sub_id'] is None
     assert response['cancel_at'] is None

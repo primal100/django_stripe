@@ -15,9 +15,13 @@
   <link rel="stylesheet" type="text/css" href="{%  static 'css/django_stripe/pricing.css' %}">
   <link rel="stylesheet" type="text/css" href="{%  static 'css/django_stripe/store.css' %}">
   <link rel="icon" type="image/png" sizes="104x80" href="{%  static 'images/django_stripe/logo.png' %}">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+  <link rel="stylesheet" href="https://code.getmdl.io/1.3.0/material.indigo-pink.min.css">
+  <script defer src="https://code.getmdl.io/1.3.0/material.min.js"></script>
 </head>
 
 <body>
+  {% if product.subscription_info.sub_id %}
    <dialog id="cancel-subscription-dialog" class="mdl-dialog">
     <h4 class="mdl-dialog__title">Cancel Subscription?</h4>
     <div class="mdl-dialog__content">
@@ -30,6 +34,7 @@
       <button type="button" class="mdl-button close">Cancel</button>
     </div>
   </dialog>
+  {% endif %}
 
   <main id="main" class="loading">
     <header class="header">
@@ -38,13 +43,10 @@
     </header>
 
     {% if product.subscription_info.sub_id %}
-        {% if product.subscription_info.cancel_at %}
-            <p>Your subscription will end on {{ product.subscription_info.cancel_at }}.</p>
-        {%  else %}
-            <p>Thanks for being a subscriber. Your next payment is due on {{ product.subscription_info.current_period_end }}. </p>
-            <p>You may update your payment method below. Click <a id="show-cancellation-dialog" href="#">here</a> to cancel your subscription.</p>
-        {%  endif %}
+        <p>Thanks for being a subscriber. Your next payment is due on {{ product.subscription_info.current_period_end }}. </p>
+        <p>You may update your payment method below. Click <a id="show-cancellation-dialog" href="#">here</a> to cancel your subscription.</p>
     {%  else %}
+
     {% block prices %}
 
         <! ––  Thanks to https://codepen.io/kresogalic/pen/dGzvRV ––>
@@ -63,7 +65,7 @@
                             <span class="price price-number"></span>
                         </div>
                         <div class="back">
-                            <a id="{{ price.id }}" href="#" class="button" onclick="onPriceClick(event)">Purchase now</a>
+                            <a id="{{ price.id }}" href="#" class="button price-selection">Purchase now</a>
                         </div>
                     </div>
                 </div>
@@ -75,11 +77,8 @@
     {%  endif %}
 
     <div id="checkout">
-      <div id="payment-request">
-        <div id="payment-request-button"></div>
-      </div>
-      <form id="payment-form" method="POST" action="/orders">
-        <p class="instruction"><span>Complete your payment details below</p>
+      <form id="payment-form" method="POST">
+        <p class="instruction"><span>{% if product.subscription_info.sub_id %}You can change{% else %}To subscribe, enter {% endif %} your payment details below</p>
         <section>
           <h2>Billing Information</h2>
           <fieldset class="with-state">
@@ -107,6 +106,7 @@
               <span>Country</span>
               <div id="country" class="field US">
                 <select name="country">
+                   {%  block countries %}
                   <option value="AU">Australia</option>
                   <option value="AT">Austria</option>
                   <option value="BE">Belgium</option>
@@ -135,6 +135,7 @@
                   <option value="CH">Switzerland</option>
                   <option value="GB">United Kingdom</option>
                   <option value="US" selected="selected">United States</option>
+                    {% endblock countries %}
                 </select>
               </div>
             </label>
@@ -150,30 +151,24 @@
             </fieldset>
           </div>
         </section>
+           <button class="payment-button" type="submit">{% if product.subscription_info.sub_id %}Change Payment Method{% else %}Subscribe{% endif %}</button>
       </form>
-     <button class="payment-button" type="submit">Subscribe</button>
       <div id="card-errors" class="element-errors"></div>
     </div>
+
     <div id="confirmation">
-      <div class="status processing">
-        <h1>{% if  %}Completing your subscription</h1>
-        <p>We’re just waiting for the confirmation from your bank… This might take a moment but feel free to close this page.</p>
-      </div>
       <div class="status success">
-        <h1>You have subscribed successfully!</h1>
-        <p>Thank you!</p>
-        <p class="success-message"></p>
-      </div>
-      <div class="status success-change-payment-method">
-        <h1>Your new payment method has been applied!</h1>
-        <p>Thank you!</p>
+        <h1 id="success-header">{% if product.subscription_info.sub_id %}You have successfully changed your payment method!{% else %}Your subscription is complete.{% endif %}</h1>
+        <p id="success-text">Your payment details have been confirmed!</p>
+        <p class="note">Thank you!</p>
       </div>
       <div class="status error">
-        <h1>Oops, payment failed.</h1>
-        <p>It looks like your payment could not be setup at this time. Please try again or select a different payment option.</p>
+        <h1 id="error-header">Oops, payment setup failed.</h1>
+        <p id="error-text">It looks like your payment could not be setup at this time. Please try again or enter a different payment option.</p>
         <p class="error-message"></p>
       </div>
     </div>
+
   </main>
   <aside id="summary">
     <div class="header">
@@ -217,7 +212,7 @@
       const config = JSON.parse(document.getElementById('context').textContent);
   </script>
   <script src="https://js.stripe.com/v3/"></script>
-  <script src="{%  static 'js/django_stripe/store.js' %}"></script>
+  <script src="{%  static 'js/django_stripe/api.js' %}"></script>
   <script src="{%  static 'js/django_stripe/payments.js' %}"></script>
 </body>
 

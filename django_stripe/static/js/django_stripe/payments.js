@@ -1,21 +1,23 @@
 (async () => {
   'use strict';
 
-  console.log(config)
+  // Get required config
+  const email = config.email;
+  let country = config.country;
 
   // Create references to the main form and its submit button.
   const form = document.getElementById('payment-form');
   const submitButton = document.querySelector('.payment-button');
   const confirmationElement = document.getElementById('confirmation');
-h
+
   // Global variable to store the submit button text.
-  let submitButtonPayText = 'Pay';
+  let submitButtonPayText = submitButton.textContent;
 
   const updateSubmitButtonPayText = (newText) => {
     submitButton.textContent = newText;
-    submitButtonPayText = newText;
   };
-  // Global variable to store the PaymentIntent object.
+
+  // Global variable to store the SetupIntent object.
   let setupIntent;
 
   /**
@@ -68,7 +70,7 @@ h
     } else {
       cardErrors.classList.remove('visible');
     }
-    // Re-enable the Pay button.
+    // Re-enable the Subscribe button.
     submitButton.disabled = false;
   });
 
@@ -76,14 +78,17 @@ h
       if (message) {
         confirmationElement.querySelector('.error-message').innerText = message;
       }
-       mainElement.classList.add('error');
+      mainElement.classList.remove('processing');
+      mainElement.classList.add('error');
   }
 
   function onSuccess(message){
       if (message) {
         confirmationElement.querySelector('.error-message').innerText = message;
       }
-       mainElement.classList.add('success');
+      mainElement.classList.remove('processing');
+      mainElement.classList.add('success');
+      mainElement.classList.remove('checkout');
   }
 
 
@@ -95,67 +100,63 @@ h
       selectCountry(event.target.value);
     });
 
-  // Submit handler for our payment form.
+  // Submit handler for our subscription form.
   submitButton.addEventListener('click', async (event) => {
     event.preventDefault();
-    console.log('Running submit');
 
     // Disable the Pay button to prevent multiple click events.
     submitButton.disabled = true;
     submitButton.textContent = 'Processing…';
+    mainElement.classList.add('processing');
+    mainElement.classList.remove('error');
+    mainElement.classList.remove('success')
 
-    let paymentMethod = getSelectedPaymentMethod();
-    console.log(paymentMethod);
-    if (!paymentMethod){
-        // Let Stripe.js handle the confirmation of the SetupIntent with the card Element.
-        const valid = form.reportValidity();
-        if (valid) {
-          // Retrieve the user information from the form.
-          const name = form.querySelector('input[name=name]').value;
-          const email = config.user_email;
-          const billingAddress = {
-            country: form.querySelector('select[name=country] option:checked').value,
-            line1: form.querySelector('input[name=address]').value,
-            postal_code: form.querySelector('input[name=postal_code]').value,
-            city: form.querySelector('input[name=city]').value,
-            state: form.querySelector('input[name=state]').value,
-          };
+    // Let Stripe.js handle the confirmation of the SetupIntent with the card Element.
+    const valid = form.reportValidity();
+    if (valid) {
+      // Retrieve the user information from the form.
+      const name = form.querySelector('input[name=name]').value;
+      const billingAddress = {
+        country: form.querySelector('select[name=country] option:checked').value,
+        line1: form.querySelector('input[name=address]').value,
+        postal_code: form.querySelector('input[name=postal_code]').value,
+        city: form.querySelector('input[name=city]').value,
+        state: form.querySelector('input[name=state]').value,
+      };
 
-          setupIntent = setupIntent || await createSetupIntent();
-          console.log("confirming card setup with setupIntent", setupIntent);
-          const response = await stripe.confirmCardSetup(
-              setupIntent.client_secret,
-              {
-                payment_method: {
-                  card,
-                  billing_details: {
-                    name,
-                    email,
-                    address: billingAddress,
-                  },
-                },
-              })
-          const cardSetupSuccessful = handleCardSetupResponse(response);
-          setupIntent = response.setupIntent;
-          if (cardSetupSuccessful) {
-            paymentMethod = setupIntent.payment_method;
-            setupIntent = null;
-          }
+      setupIntent = setupIntent || await createSetupIntent();
+
+      const response = await stripe.confirmCardSetup(
+          setupIntent.client_secret,
+          {
+            payment_method: {
+              card,
+              billing_details: {
+                name,
+                email,
+                address: billingAddress,
+              },
+            },
+          })
+      const cardSetupSuccessful = handleCardSetupResponse(response);
+      setupIntent = response.setupIntent;
+      if (cardSetupSuccessful) {
+        const paymentMethod = setupIntent.payment_method;
+        setupIntent = null;
+        if (config.subscriptionInfo.sub_id){
+          const response = await modifySubscription(config.subscriptionInfo.sub_id, paymentMethod);
         }else{
-            submitButton.disabled = false;
-            submitButton.textContent = submitButtonPayText;
+          const response = await createSubscription(paymentMethod);
         }
-    }
-
-    if (paymentMethod) {
-      console.log('Subscribing')
-      const response = await createSubscription(paymentMethod);
-      if (response.error) {
-        onError(response.error.message)
-      }else{
-          mainElement.classList.add('success');
+        if (response.error) {
+          onError(response.error.message)
+        } else {
+          onSuccess();
+        }
+      } else {
+        submitButton.disabled = false;
+        submitButton.textContent = submitButtonPayText;
       }
-      console.log(response);
     }
   });
 
@@ -167,44 +168,29 @@ h
     const mainElement = document.getElementById('main');
 
     if (error && error.type === 'validation_error') {
-      mainElement.classList.remove('processing');
-      mainElement.classList.remove('receiver');
       submitButton.disabled = false;
       submitButton.textContent = submitButtonPayText;
       return false;
     } else if (error) {
-      mainElement.classList.remove('processing');
-      mainElement.classList.remove('receiver');
-      confirmationElement.querySelector('.error-message').innerText =
-        error.message;
-      mainElement.classList.add('error');
+      onError(error.message);
       return false;
     } else if (setupIntent.status === 'succeeded') {
       // Success! Payment is confirmed. Update the interface to display the confirmation screen.
-      mainElement.classList.remove('processing');
-      mainElement.classList.remove('receiver');
       // Update the note about successful subscription.
-      confirmationElement.querySelector('.note').innerText =
-        'Your payment details have been confirmed.';
+      //confirmationElement.querySelector('.note').innerText = 'Your payment details have been confirmed.';
       return true;
     } else if (setupIntent.status === 'processing') {
       // Success! Now waiting for payment method confirmation.
-      mainElement.classList.remove('processing');
       confirmationElement.querySelector('.note').innerText =
         'Your subscription will become active soon as your payment method is confirmed.';
       return true;
     } else if (setupIntent.status === 'requires_payment_method') {
       // Failure. Requires new PaymentMethod, show last payment error message.
-      mainElement.classList.remove('processing');
-      confirmationElement.querySelector('.error-message').innerText = setupIntent.last_setup_error || 'Payment failed';
-      mainElement.classList.add('error');
+      onError(setupIntent.last_setup_error || 'Payment failed');
       return false;
     } else {
       // Payment method setup has failed.
-      mainElement.classList.remove('success');
-      mainElement.classList.remove('processing');
-      mainElement.classList.remove('receiver');
-      mainElement.classList.add('error');
+      onError();
       return false;
     }
   };
@@ -213,15 +199,8 @@ h
 
   mainElement.classList.add('checkout');
 
-    // Create the PaymentIntent with the cart details.
   document.getElementById('main').classList.remove('loading');
 
-  /**
-   * Display the relevant payment methods for a selected country.
-   */
-
-  // List of relevant countries for the payment methods supported in this demo.
-  // Read the Stripe guide: https://stripe.com/payments/payment-methods-guide
   const paymentMethods = {
     card: {
       name: 'Card',
@@ -230,10 +209,8 @@ h
   };
 
   // Update the main button to reflect the payment method being selected.
-  const updateButtonLabel = (paymentMethod, bankName) => {
-    let name = paymentMethods[paymentMethod].name;
-    let label = `Subscribe`;
-    updateSubmitButtonPayText(label);
+  const updateButtonLabel = () => {
+    updateSubmitButtonPayText(submitButtonPayText);
   };
 
   const selectCountry = (country) => {
@@ -293,77 +270,89 @@ h
     }
   };
 
-  // Show only the payment methods that are relevant to the selected country.
-  const showRelevantPaymentMethods = (country) => {
-    if (!country) {
-      country = form.querySelector('select[name=country] option:checked').value;
-    }
-    const paymentInputs = form.querySelectorAll('input[name=payment]');
-    for (let i = 0; i < paymentInputs.length; i++) {
-      let input = paymentInputs[i];
-      input.parentElement.classList.toggle(
-        'visible',
-        input.value === 'card' ||
-          (config.paymentMethods.includes(input.value) &&
-            paymentMethods[input.value].countries.includes(country) &&
-            paymentMethods[input.value].currencies.includes(config.currency))
-      );
-    }
-
-    // Hide the tabs if card is the only available option.
-    const paymentMethodsTabs = document.getElementById('payment-methods');
-    paymentMethodsTabs.classList.toggle(
-      'visible',
-      paymentMethodsTabs.querySelectorAll('li.visible').length > 1
-    );
-
-    // Check the first payment option again.
-    paymentInputs[0].checked = 'checked';
-    form.querySelector('.payment-info.card').classList.add('visible');
-    updateButtonLabel(paymentInputs[0].value);
-  };
-
-  // Listen to changes to the payment method selector.
-  for (let input of document.querySelectorAll('input[name=payment]')) {
-    input.addEventListener('change', (event) => {
-      event.preventDefault();
-      const payment = form.querySelector('input[name=payment]:checked').value;
-      const flow = paymentMethods[payment].flow;
-
-      // Update button label.
-      updateButtonLabel(event.target.value);
-
-      // Show the relevant details, whether it's an extra element or extra information for the user.
-      form
-        .querySelector('.payment-info.card')
-        .classList.toggle('visible', payment === 'card');
-    });
-  }
-
   // Select the default country from the config on page load.
-  let country = config.country;
+
   selectCountry(country);
 
-  let dialog = document.querySelector('#cancel-subscription-dialog');
-  let showDialogButton = document.querySelector('#show-cancellation-dialog');
-    showDialogButton.addEventListener('click', function() {
+  const showDialogButton = document.querySelector('#show-cancellation-dialog');
+  if (showDialogButton) {
+    const dialog = document.querySelector('#cancel-subscription-dialog');
+
+    showDialogButton.addEventListener('click', function () {
       dialog.showModal();
     });
-    dialog.querySelector('.close').addEventListener('click', function() {
+    dialog.querySelector('.close').addEventListener('click', function () {
       dialog.close();
     });
-    dialog.querySelector('#cancel-subscription-confirm-button').addEventListener('click', async function() {
+    dialog.querySelector('#cancel-subscription-confirm-button').addEventListener('click', async function () {
       const result = await cancelSubscription(config.subscriptionInfo.sub_id);
       if (result.error) {
-         confirmationElement.querySelector('.error-message').innerText = result.error.message;
-         mainElement.classList.add('error');
+        confirmationElement.querySelector('#error-header').innerText = "We were unable to cancel your subscription";
+        confirmationElement.querySelector('#error-text').innerText = "";
 
-      }else{
-          confirmationElement.querySelector('.note').innerText =
-        `Your subscription will be cancelled on ${response.cancel_at}. Sorry to see you go.`;
-          mainElement.classList.add('success');
+        onError(result.error);
+
+      } else {
+        console.log(result);
+        if (result.cancel_at) {
+          confirmationElement.querySelector('#success-header').innerText = `Your subscription will be cancelled on ${result.cancel_at}`;
+        }else{
+          confirmationElement.querySelector('#success-header').innerText = `Your subscription has been cancelled`;
+        }
+        confirmationElement.querySelector('#success-text').innerText = "Sorry to see you go";
+        onSuccess();
       }
       dialog.close();
     });
+  }
+
+  // Format a price (assuming a two-decimal currency like EUR or USD for simplicity).
+  function formatPrice(amount, currency) {
+    let price = (amount / 100).toFixed(2);
+    let numberFormat = new Intl.NumberFormat(['en-US'], {
+      style: 'currency',
+      currency: currency,
+      currencyDisplay: 'symbol',
+    });
+    return numberFormat.format(price);
+  }
+
+  function toggleSummary() {
+    const summary = document.getElementById('summary');
+    summary.classList.toggle(
+      'visible',
+      selectedPriceId
+    );
+  }
+
+  function onPriceClick(event){
+    const priceElem = event.target;
+    selectedPriceId = priceElem.id;
+    document.querySelector('.total-price').textContent = getPriceText(priceElem);
+    toggleSummary();
+    const firstFieldElem = document.querySelector('.first-field');
+    firstFieldElem.focus();
+  }
+
+   document.querySelectorAll(".price-selection")
+       .forEach(elem => {
+          elem.addEventListener('click', onPriceClick)
+    });
+
+
+  function getPriceText(elem){
+    const parentElem = elem.closest(".pricing-option");
+    const priceData = parentElem.dataset;
+    let currency = priceData.currency;
+    let amount = priceData.unit_amount;
+    let interval = priceData.interval;
+    return formatPrice(amount, currency) + "/" + interval;
+  }
+
+
+  document.querySelectorAll('.price-number').forEach(elem => {
+    elem.textContent = getPriceText(elem);
+})
+
 })();
 

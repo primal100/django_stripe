@@ -185,17 +185,20 @@ class StripeModifyMixin(StripeViewWithSerializerMixin, Protocol):
 
 class StripeDeleteMixin(StripeViewMixin, Protocol):
     permission_classes = (IsAuthenticated,)
+    delete_status_code = status.HTTP_204_NO_CONTENT
 
-    def destroy(self, request: Request, obj_id: str) -> None:
-        payments.delete(request.user, self.stripe_resource, obj_id)
+    def destroy(self, request: Request, obj_id: str):
+        return payments.delete(request.user, self.stripe_resource, obj_id)
 
-    def run_delete(self, request: Request, obj_id: str) -> None:
+    def run_delete(self, request: Request, obj_id: str):
         try:
-            self.destroy(request, obj_id=obj_id)
+            result = self.destroy(request, obj_id=obj_id)
+            if result:
+                return self.make_response(result)
         except subscriptions.exceptions.StripeWrongCustomer:
             raise exceptions.StripeException(f"No such {self.name_in_errors}: '{obj_id}'")
 
     def delete(self, request: Request, obj_id: str, **kwargs) -> Response:
         return self.run_stripe_response(request, method=self.run_delete,
-                                        status_code=status.HTTP_204_NO_CONTENT,
+                                        status_code=self.delete_status_code,
                                         obj_id=obj_id, **kwargs)

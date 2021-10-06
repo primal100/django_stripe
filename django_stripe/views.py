@@ -117,6 +117,7 @@ class StripeSubscriptionView(APIView, StripeListMixin, StripeCreateWithSerialize
                              StripeModifyMixin, StripeDeleteMixin):
     stripe_resource = stripe.Subscription
     status_code = status.HTTP_201_CREATED
+    delete_status_code = status.HTTP_200_OK
     serializer_classes = {
         'GET': serializers.SubscriptionListSerializer,
         'PUT': serializers.SubscriptionModifySerializer,
