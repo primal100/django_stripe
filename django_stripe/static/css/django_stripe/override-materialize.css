@@ -1,0 +1,13 @@
+input {
+  border-bottom: initial!important;
+  box-shadow: initial!important;
+  font-size: initial!important;
+  height: initial!important;
+  margin: initial!important;
+  padding: initial!important;
+  width: initial!important;
+}
+
+select {
+  display: initial;
+}

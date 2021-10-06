@@ -159,7 +159,7 @@ fieldset label:not(:last-child) {
 
 fieldset label.state {
   display: inline-flex;
-  width: 75%;
+  width: 75%!important;
 }
 
 fieldset:not(.with-state) label.state {
@@ -914,7 +914,7 @@ button:active {
   display: none;
 }
 
-.payment-info:not(.card) {
+.payment-info:not(.card-details) {
   margin-bottom: 15px;
 }
 
@@ -927,7 +927,7 @@ button:active {
   display: block;
 }
 
-.payment-info.card.visible,
+.payment-info.card-details.visible,
 .payment-info.sepa_debit.visible {
   text-align: center;
 }
@@ -1277,10 +1277,10 @@ button:active {
     padding-left: 15px;
   }
   #payment-form {
-    margin: 0;
-    padding: 0 15px;
-    border-width: 2px 0 0 0;
-    border-radius: 0;
+    margin: 0!important;
+    padding: 0 15px!important;
+    border-width: 2px 0 0 0!important;
+    border-radius: 0!important;
   }
   .payment-info span {
     display: none;

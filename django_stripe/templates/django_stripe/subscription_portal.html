@@ -12,28 +12,33 @@
   <meta name="twitter:title" content="Stripe Payments Demo">
   <meta name="twitter:description" content="Sample store accepting universal payments on the web with Stripe Elements, Payment Request, Apple Pay, Google Pay, and the Sources API.">
   <meta name="twitter:image" content="https://stripe-payments-demo.appspot.com/images/twitter.png">
-  <link rel="stylesheet" type="text/css" href="{%  static 'css/django_stripe/pricing.css' %}">
+      <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
+    <link rel="stylesheet" type="text/css" href="{%  static 'css/django_stripe/override-materialize.css' %}">
+    <link rel="stylesheet" type="text/css" href="{%  static 'css/django_stripe/pricing.css' %}">
   <link rel="stylesheet" type="text/css" href="{%  static 'css/django_stripe/store.css' %}">
   <link rel="icon" type="image/png" sizes="104x80" href="{%  static 'images/django_stripe/logo.png' %}">
   <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
-  <link rel="stylesheet" href="https://code.getmdl.io/1.3.0/material.indigo-pink.min.css">
-  <script defer src="https://code.getmdl.io/1.3.0/material.min.js"></script>
+
+    <!-- Compiled and minified JavaScript -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+
 </head>
 
 <body>
   {% if product.subscription_info.sub_id %}
-   <dialog id="cancel-subscription-dialog" class="mdl-dialog">
-    <h4 class="mdl-dialog__title">Cancel Subscription?</h4>
-    <div class="mdl-dialog__content">
-      <p>
-        Are you sure you want to cancel your subscription?
-      </p>
+
+  <!-- Modal Structure -->
+  <div id="modal1" class="modal">
+    <div class="modal-content">
+      <h4>Cancel Subscription</h4>
+      <p>Are you sure you want to cancel your subscription?</p>
     </div>
-    <div class="mdl-dialog__actions">
-      <button id="cancel-subscription-confirm-button" type="button" class="mdl-button">OK</button>
-      <button type="button" class="mdl-button close">Cancel</button>
+    <div class="modal-footer">
+	  <a href="#!" class="modal-close waves-effect waves-red btn-flat">No</a>
+	  <a href="#!" class="modal-close cancel-subscription-button waves-effect waves-green btn-flat">Yes</a>
     </div>
-  </dialog>
+  </div>
+
   {% endif %}
 
   <main id="main" class="loading">
@@ -44,7 +49,7 @@
 
     {% if product.subscription_info.sub_id %}
         <p>Thanks for being a subscriber. Your next payment is due on {{ product.subscription_info.current_period_end }}. </p>
-        <p>You may update your payment method below. Click <a id="show-cancellation-dialog" href="#">here</a> to cancel your subscription.</p>
+        <p>You may update your payment method below. Click <a class="modal-trigger" href="#modal1">here</a> to cancel your subscription.</p>
     {%  else %}
 
     {% block prices %}
@@ -142,7 +147,7 @@
           </fieldset>
          </section>
         <section>
-          <div class="payment-info card visible">
+          <div class="payment-info card-details visible">
             <fieldset>
               <label>
                 <span>Card</span>
@@ -164,7 +169,7 @@
       </div>
       <div class="status error">
         <h1 id="error-header">Oops, payment setup failed.</h1>
-        <p id="error-text">It looks like your payment could not be setup at this time. Please try again or enter a different payment option.</p>
+        <p id="error-text">It looks like your subscription could not be setup at this time. Please try again or enter a different payment option.</p>
         <p class="error-message"></p>
       </div>
     </div>

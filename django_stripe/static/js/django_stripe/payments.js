@@ -67,30 +67,45 @@
     if (error) {
       cardErrors.textContent = error.message;
       cardErrors.classList.add('visible');
-    } else {
-      cardErrors.classList.remove('visible');
+      submitButton.disabled = true;
+    } else if (!selectedPriceId){
+      cardErrors.textContent = "Please select the price option you wish to subscribe with";
+      cardErrors.classList.add('visible');
+      submitButton.disabled = true;
     }
-    // Re-enable the Subscribe button.
-    submitButton.disabled = false;
+    else {
+      cardErrors.classList.remove('visible');
+          // Re-enable the Subscribe button.
+      submitButton.disabled = false;
+    }
   });
+
+  function scrollToTop(){
+    window.scrollTo(0, 0);
+  }
+
+  function capitalizeFirstLetter(string) {
+    return string.charAt(0).toUpperCase() + string.slice(1);
+  }
 
   function onError(message){
       if (message) {
-        confirmationElement.querySelector('.error-message').innerText = message;
+        confirmationElement.querySelector('.error-message').innerText = capitalizeFirstLetter(message);
       }
       mainElement.classList.remove('processing');
       mainElement.classList.add('error');
+      scrollToTop();
   }
 
   function onSuccess(message){
       if (message) {
-        confirmationElement.querySelector('.error-message').innerText = message;
+        confirmationElement.querySelector('.note').innerText = capitalizeFirstLetter(message);
       }
       mainElement.classList.remove('processing');
       mainElement.classList.add('success');
       mainElement.classList.remove('checkout');
+      scrollToTop();
   }
-
 
   // Listen to changes to the user-selected country.
   form
@@ -126,37 +141,48 @@
 
       setupIntent = setupIntent || await createSetupIntent();
 
-      const response = await stripe.confirmCardSetup(
-          setupIntent.client_secret,
-          {
-            payment_method: {
-              card,
-              billing_details: {
-                name,
-                email,
-                address: billingAddress,
-              },
-            },
-          })
-      const cardSetupSuccessful = handleCardSetupResponse(response);
-      setupIntent = response.setupIntent;
-      if (cardSetupSuccessful) {
-        const paymentMethod = setupIntent.payment_method;
+      if (setupIntent.error) {
+        onError(setupIntent.error);
         setupIntent = null;
-        if (config.subscriptionInfo.sub_id){
-          const response = await modifySubscription(config.subscriptionInfo.sub_id, paymentMethod);
-        }else{
-          const response = await createSubscription(paymentMethod);
-        }
-        if (response.error) {
-          onError(response.error.message)
+      }else{
+        const confirmCardSetupResponse = await stripe.confirmCardSetup(
+            setupIntent.client_secret,
+            {
+              payment_method: {
+                card,
+                billing_details: {
+                  name,
+                  email,
+                  address: billingAddress,
+                },
+              },
+            })
+        const cardSetupSuccessful = handleCardSetupResponse(confirmCardSetupResponse);
+        setupIntent = confirmCardSetupResponse.setupIntent;
+        if (cardSetupSuccessful) {
+          const paymentMethod = setupIntent.payment_method;
+          setupIntent = null;
+          let subscriptionResponse;
+          if (config.subscriptionInfo.sub_id) {
+            subscriptionResponse = await modifySubscription(config.subscriptionInfo.sub_id, paymentMethod);
+          } else {
+            subscriptionResponse = await createSubscription(paymentMethod);
+          }
+          if (subscriptionResponse.error) {
+            onError(subscriptionResponse.error)
+          } else if (subscriptionResponse.status !== "active"){
+            onSuccess("Your subscription is not yet active as your payment method has not been processed.");
+          }else{
+            onSuccess();
+          }
         } else {
-          onSuccess();
+          submitButton.disabled = false;
+          submitButton.textContent = submitButtonPayText;
         }
-      } else {
+      }
+    }else{
         submitButton.disabled = false;
         submitButton.textContent = submitButtonPayText;
-      }
     }
   });
 
@@ -186,7 +212,7 @@
       return true;
     } else if (setupIntent.status === 'requires_payment_method') {
       // Failure. Requires new PaymentMethod, show last payment error message.
-      onError(setupIntent.last_setup_error || 'Payment failed');
+      onError(setupIntent.last_setup_error.message || 'Payment failed');
       return false;
     } else {
       // Payment method setup has failed.
@@ -274,17 +300,9 @@
 
   selectCountry(country);
 
-  const showDialogButton = document.querySelector('#show-cancellation-dialog');
-  if (showDialogButton) {
-    const dialog = document.querySelector('#cancel-subscription-dialog');
-
-    showDialogButton.addEventListener('click', function () {
-      dialog.showModal();
-    });
-    dialog.querySelector('.close').addEventListener('click', function () {
-      dialog.close();
-    });
-    dialog.querySelector('#cancel-subscription-confirm-button').addEventListener('click', async function () {
+  const cancelSubscriptionButton = document.querySelector('.cancel-subscription-button');
+  if (cancelSubscriptionButton) {
+    cancelSubscriptionButton.addEventListener('click', async function () {
       const result = await cancelSubscription(config.subscriptionInfo.sub_id);
       if (result.error) {
         confirmationElement.querySelector('#error-header').innerText = "We were unable to cancel your subscription";
@@ -302,7 +320,6 @@
         confirmationElement.querySelector('#success-text').innerText = "Sorry to see you go";
         onSuccess();
       }
-      dialog.close();
     });
   }
 
@@ -356,3 +373,7 @@
 
 })();
 
+document.addEventListener('DOMContentLoaded', function() {
+  var elems = document.querySelectorAll('.modal');
+  var instances = M.Modal.init(elems);
+});

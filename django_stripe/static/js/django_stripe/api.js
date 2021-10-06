@@ -4,18 +4,26 @@ const subscriptionUrl = config.subscription_api_url;
 const setupIntentsUrl = config.setup_intents_url;
 let selectedPriceId = null;
 
+
+async function checkResponse(response){
+   const data = await response.json();
+   if (response.status > 204){
+      const errorKey = Object.keys(data)[0];
+      const errorValue = data[errorKey];
+      const errorMsg = `${errorKey}: ${errorValue}`
+      return {error: errorMsg};
+   } else {
+      return data;
+   }
+}
+
 async function createSetupIntent() {
   try {
     const response = await fetch(setupIntentsUrl, {
       method: 'POST',
       headers: headers
     });
-    const data = await response.json();
-    if (data.error) {
-      return {error: data.error};
-    } else {
-      return data;
-    }
+    return await checkResponse(response);
   } catch (err) {
     return {error: err.message};
   }
@@ -24,7 +32,6 @@ async function createSetupIntent() {
 
 async function createSubscription(paymentMethodId) {
   try {
-    console.log('Creating subscription');
     const response = await fetch(subscriptionUrl, {
       method: 'POST',
       headers: headers,
@@ -33,12 +40,7 @@ async function createSubscription(paymentMethodId) {
             price_id: selectedPriceId
       })
     });
-    const data = await response.json();
-    if (data.error) {
-      return {error: data.error};
-    } else {
-      return data;
-    }
+    return await checkResponse(response);
   } catch (err) {
     return {error: err.message};
   }
@@ -54,12 +56,7 @@ async function modifySubscription(subscriptionId, paymentMethodId) {
             default_payment_method: paymentMethodId,
       })
     });
-    const data = await response.json();
-    if (data.error) {
-      return {error: data.error};
-    } else {
-      return data;
-    }
+    return await checkResponse(response);
   } catch (err) {
     return {error: err.message};
   }
@@ -72,13 +69,7 @@ async function cancelSubscription(subscriptionId) {
       method: 'DELETE',
       headers: headers
     });
-    console.log(response);
-    const data = await response.json();
-    if (data.error) {
-      return {error: data.error};
-    } else {
-      return data;
-    }
+    return await checkResponse(response);
   } catch (err) {
     return {error: err.message};
   }
