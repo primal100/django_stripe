@@ -78,10 +78,6 @@ class Settings:
         return getattr(django_settings, 'STRIPE_CREDIT_CARD_HIDE_POSTAL_CODE', False)
 
     @property
-    def STRIPE_CHECKOUT_COLLECT_BILLING_DATA(self) -> bool:
-        return getattr(django_settings, 'STRIPE_CHECKOUT_COLLECT_BILLING_DATA', True)
-
-    @property
     def STRIPE_CHECKOUT_TITLE(self) -> bool:
         return getattr(django_settings, 'STRIPE_CHECKOUT_TITLE', os.environ.get('STRIPE_CHECKOUT_TITLE', 'Django Stripe Checkout Demo'))
 

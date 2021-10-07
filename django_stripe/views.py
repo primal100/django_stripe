@@ -11,7 +11,6 @@ from rest_framework.views import APIView
 from .conf import settings
 from . import serializers
 from . import payments
-from .forms import BillingDetailsForm
 from .utils import get_user_if_token_user
 from .logging import logger
 from .view_mixins import StripeListMixin, StripeCreateMixin, StripeCreateWithSerializerMixin, StripeModifyMixin, StripeDeleteMixin
@@ -168,8 +167,7 @@ class GoToBillingPortalView(LoginRequiredMixin, RedirectView):
         return session['url']
 
 
-class SubscriptionPortalView(LoginRequiredMixin, TemplateView):
-    template_name = 'django_stripe/subscription_portal.html'
+class BaseCheckoutView(LoginRequiredMixin, TemplateView):
     product_id: str = None
     date_format: str = "%A %d %B %Y"
 
@@ -194,31 +192,47 @@ class SubscriptionPortalView(LoginRequiredMixin, TemplateView):
             return datetime.datetime.fromtimestamp(timestamp).strftime(self.date_format)
         return None
 
+
+class SubscriptionPortalView(BaseCheckoutView):
+    template_name = 'django_stripe/subscription_portal.html'
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         user = get_user_if_token_user(self.request.user)
         product_id = self.get_product_id()
         logger.debug("Opening payments portal for user %d, product %s", user.id, product_id)
-        context['existing_payment_methods'] = list(payments.list_payment_methods(user, settings.STRIPE_PAYMENT_METHOD_TYPES))
         context['product'] = payments.retrieve_product(user, product_id)
         context['product']['subscription_info']['current_period_end'] = self.timestamp_format(context['product']['subscription_info']['current_period_end'])
         context['product']['subscription_info']['cancel_at'] = self.timestamp_format(context['product']['subscription_info']['cancel_at'])
-        context['user'] = user
-        context['collect_billing_data'] = settings.STRIPE_CHECKOUT_COLLECT_BILLING_DATA
-        context['form'] = BillingDetailsForm
         context['dev_mode'] = settings.STRIPE_CHECKOUT_DEV_MODE and 'test' in settings.STRIPE_PUBLISHABLE_KEY
         context['title'] = settings.STRIPE_CHECKOUT_TITLE
+        context['subscription_history_url'] = reverse("subscription-history")
         context['js_config'] = {
             'subscriptionInfo': context['product']['subscription_info'],
             'user_email': user.email,
             'country': self.get_default_country(),
-            'collect_billing_data': settings.STRIPE_CHECKOUT_COLLECT_BILLING_DATA,
             'hide_postal_code': settings.STRIPE_CREDIT_CARD_HIDE_POSTAL_CODE,
             'stripePublishableKey': settings.STRIPE_PUBLISHABLE_KEY,
-            'has_existing_payment_methods': bool(context['existing_payment_methods']),
             'paymentMethods': settings.STRIPE_PAYMENT_METHOD_TYPES,
-            'payment_methods_url': reverse("payment-methods"),
             'subscription_api_url': reverse("subscriptions"),
             'setup_intents_url': reverse("setup-intents")
         }
+        return context
+
+
+class SubscriptionHistoryView(BaseCheckoutView):
+    template_name = 'django_stripe/subscription_history.html'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        user = get_user_if_token_user(self.request.user)
+        product_id = self.get_product_id()
+        logger.debug("Opening subscription history portal for user %d, product %s", user.id, product_id)
+        context['subscription'] = payments.list_customer_resource(user, stripe.Subscription)
+        context['invoices'] = payments.list_customer_resource(user, stripe.Invoice)
+        context['subscription_portal_url'] = reverse("subscription-portal")
+        context['subscription'] = self.timestamp_format(context['product']['subscription_info']['current_period_end'])
+        context['subscription'] = self.timestamp_format(context['product']['subscription_info']['cancel_at'])
+        context['dev_mode'] = settings.STRIPE_CHECKOUT_DEV_MODE and 'test' in settings.STRIPE_PUBLISHABLE_KEY
+        context['title'] = settings.STRIPE_CHECKOUT_TITLE
         return context

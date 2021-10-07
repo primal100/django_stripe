@@ -62,7 +62,6 @@ body {
 
 .header a.github {
   padding-left: 20px;
-  background: url(../../images/django_stripe/github.svg) left center no-repeat;
 }
 
 .header a:hover {
