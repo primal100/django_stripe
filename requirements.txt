@@ -1,9 +1,7 @@
 wheel
 django
 djangorestframework
-django-material
 stripe
 inflect
-forex-python
 pycountry
 stripe_subscriptions @ git+git://github.com/primal100/stripe-subscriptions.git#egg=stripe_subscriptions

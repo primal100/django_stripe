@@ -52,34 +52,45 @@
         <p>You may update your payment method below. Click <a class="modal-trigger" href="#modal1">here</a> to cancel your subscription.</p>
     {%  else %}
 
-    {% block prices %}
 
-        <! ––  Thanks to https://codepen.io/kresogalic/pen/dGzvRV ––>
-        <div class="pricing-table">
+  <div class="container">
+        {% block prices %}
+      <div class="row">
+    {% for price in product.prices %}
 
+    <div class=" col s12 m4">
+      <div class="card pricing-option" data-currency="{{ price.currency }}" data-unit_amount={{ price.unit_amount }} data-interval="{{ price.recurring.interval }}">
 
-        {% for price in product.prices %}
-                <div class="pricing-option" data-currency="{{ price.currency }}" data-unit_amount={{ price.unit_amount }} data-interval="{{ price.recurring.interval }}">
-                   <i class="material-icons">{{ price.metadata.price_icon }}</i>
-                    <h1>{{ price.metadata.price_header  }}</h1>
-                    <hr />
-                    <p>{{ price.metadata.additional_info  }}</p>
-                    <hr/>
-                    <div class="price">
-                        <div class="front">
-                            <span class="price price-number"></span>
-                        </div>
-                        <div class="back">
-                            <a id="{{ price.id }}" href="#" class="button price-selection">Purchase now</a>
-                        </div>
-                    </div>
-                </div>
-        {%  endfor %}
-
+        <div class="card-content center">
+          <h5 class=''>{{ price.metadata.price_header  }}</h5>
         </div>
+          <div class="card-content center">
+            <h1 class='blue-text price-number'></h1>
+          </div>
 
+        <ul class='collection center'>
+              <li class='collection-item'>
+                  {{ price.metadata.additional_info }}
+          </li>
+              <li class='collection-item'>
+                <strong>30GB</strong> Data
+          </li>
+        </ul>
+
+        <div class="card-content center">
+          <div class="row">
+            <div class="col s12">
+              <button id="{{ price.id }}" class='btn green price-selection'>Subscribe Now</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+      </div>
     {%  endblock %}
-    {%  endif %}
+    </div>
+  {%  endif %}
 
     <div id="checkout">
       <form id="payment-form" method="POST">
