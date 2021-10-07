@@ -1,0 +1,53 @@
+{% extends "django_stripe/base_portal.html" %}
+{% load static %}
+{% load number_formats %}
+
+{% block main_content %}
+
+    <div class="row">
+    <div class="col s12 m4">
+    {% block subscription %}
+       <h2>Subscription Status</h2>
+       {% if subscription %}
+           <div class="pricing-option" data-currency="{{ subscription.plan.currency }}" data-unit_amount="{{ subscription.plan.amount }}" data-interval="{{ subscription.plan.interval }}">
+               <span>Your subscription for <span class="price-number">{{ subscription.plan.currency }} {{ subscription.plan.amount }} / {{ subscription.plan.interval }}</span> is currently in {{ subscription.status }} status.</span>
+            </div>
+       {% else %}
+           You currently do not have any active subscriptions. Click <a href="{{ header_link }}">here</a> for subscription options.
+       {% endif %}
+        <div class="divider"></div>
+    {% endblock %}
+
+    {%  block payment_method %}
+    {%  if payment_method %}
+        <h2>Payment Method</h2>
+        <span class="{{ payment_method.card.brand }}"> ***********{{ payment_method.card.last4 }} Expires {{ payment_method.card.exp_month }}/{{ payment_method.card.exp_year | two_digit_year}}</span>
+        <div class="divider"></div>
+    {% endif %}
+    {% endblock %}
+
+{%  block invoices %}
+    {%  if invoices %}
+        <h2>Invoices</h2>
+         <table>
+        <tbody>
+    {% for invoice in invoices %}
+        <tr class="pricing-option" data-currency="{{ invoice.currency }}" data-unit_amount={{ invoice.amount_due }}>
+            <td><a target="_blank" href="{{ invoice.hosted_invoice_url }}">{{ invoice.created | timestamp_to_date }}<i class="material-icons">open_in_new</i></a></td>
+            <td class="price-number">{{ invoice.currency }}{{ invoice.amount_due }}</td>
+            <td>{{ invoice.status | capfirst}}</td>
+        </tr>
+    {% endfor %}
+      </tbody>
+      </table>
+        <div class="divider"></div>
+    {%  endif %}
+    {% endblock %}
+</div>
+</div>
+ {% endblock %}
+
+
+{% block additional_content %}
+  <script src="{%  static 'js/django_stripe/formatters.js' %}"></script>
+{% endblock %}

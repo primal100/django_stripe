@@ -206,7 +206,8 @@ class SubscriptionPortalView(BaseCheckoutView):
         context['product']['subscription_info']['cancel_at'] = self.timestamp_format(context['product']['subscription_info']['cancel_at'])
         context['dev_mode'] = settings.STRIPE_CHECKOUT_DEV_MODE and 'test' in settings.STRIPE_PUBLISHABLE_KEY
         context['title'] = settings.STRIPE_CHECKOUT_TITLE
-        context['subscription_history_url'] = reverse("subscription-history")
+        context['header_link'] = reverse("subscription-history")
+        context['header_link_text'] = "Subscription History"
         context['js_config'] = {
             'subscriptionInfo': context['product']['subscription_info'],
             'user_email': user.email,
@@ -228,11 +229,23 @@ class SubscriptionHistoryView(BaseCheckoutView):
         user = get_user_if_token_user(self.request.user)
         product_id = self.get_product_id()
         logger.debug("Opening subscription history portal for user %d, product %s", user.id, product_id)
-        context['subscription'] = payments.list_customer_resource(user, stripe.Subscription)
+        subscriptions = payments.list_customer_resource(user, stripe.Subscription)
+        context['subscription'] = None
+        for status in payments.subscription_alive_statuses:
+            relevant_subscriptions = sorted(filter(lambda s: s['status'] == status, subscriptions), key= lambda s: s['created'], reverse=True)
+            if relevant_subscriptions:
+                context['subscription'] = relevant_subscriptions[0]
+                break
+        payment_method_id = context['subscription'].get('default_payment_method', None) if context['subscription'] else None
+        if payment_method_id:
+            context['payment_method'] = payments.retrieve(user, stripe.PaymentMethod, payment_method_id)
+        else:
+            context['payment_method'] = None
         context['invoices'] = payments.list_customer_resource(user, stripe.Invoice)
-        context['subscription_portal_url'] = reverse("subscription-portal")
-        context['subscription'] = self.timestamp_format(context['product']['subscription_info']['current_period_end'])
-        context['subscription'] = self.timestamp_format(context['product']['subscription_info']['cancel_at'])
+        context['header_link'] = reverse("subscription-portal")
+        context['header_link_text'] = "Subscription Portal"
+        context['subscription']['current_period_end'] = self.timestamp_format(context['subscription']['current_period_end'])
+        context['subscription']['cancel_at'] = self.timestamp_format(context['subscription']['cancel_at'])
         context['dev_mode'] = settings.STRIPE_CHECKOUT_DEV_MODE and 'test' in settings.STRIPE_PUBLISHABLE_KEY
         context['title'] = settings.STRIPE_CHECKOUT_TITLE
         return context

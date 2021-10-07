@@ -1,30 +1,8 @@
+{% extends "django_stripe/base_portal.html" %}
 {% load static %}
 
-<!DOCTYPE html>
-<html lang="en">
 
-<head>
-  <title>{{ title }}</title>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="twitter:card" content="summary">
-  <meta name="twitter:site" content="@stripe">
-  <meta name="twitter:title" content="Stripe Payments Demo">
-  <meta name="twitter:description" content="Sample store accepting universal payments on the web with Stripe Elements, Payment Request, Apple Pay, Google Pay, and the Sources API.">
-  <meta name="twitter:image" content="https://stripe-payments-demo.appspot.com/images/twitter.png">
-      <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
-    <link rel="stylesheet" type="text/css" href="{%  static 'css/django_stripe/override-materialize.css' %}">
-    <link rel="stylesheet" type="text/css" href="{%  static 'css/django_stripe/pricing.css' %}">
-  <link rel="stylesheet" type="text/css" href="{%  static 'css/django_stripe/store.css' %}">
-  <link rel="icon" type="image/png" sizes="104x80" href="{%  static 'images/django_stripe/logo.png' %}">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
-
-    <!-- Compiled and minified JavaScript -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
-
-</head>
-
-<body>
+{% block modals %}
   {% if product.subscription_info.sub_id %}
 
   <!-- Modal Structure -->
@@ -41,12 +19,9 @@
 
   {% endif %}
 
-  <main id="main" class="loading">
-    <header class="header">
-      <a class="shop" href="/">{{ title }}</a>
-      <a class="github" href="https://github.com/stripe/stripe-payments-demo">Subscription History</a>
-    </header>
+{%  endblock %}
 
+  {% block main_content %}
     {% if product.subscription_info.sub_id %}
         <p>Thanks for being a subscriber. Your next payment is due on {{ product.subscription_info.current_period_end }}. </p>
         <p>You may update your payment method below. Click <a class="modal-trigger" href="#modal1">here</a> to cancel your subscription.</p>
@@ -54,7 +29,7 @@
 
 
   <div class="container">
-        {% block prices %}
+      {% block prices %}
       <div class="row">
     {% for price in product.prices %}
 
@@ -73,7 +48,7 @@
                   {{ price.metadata.additional_info }}
           </li>
               <li class='collection-item'>
-                <strong>30GB</strong> Data
+                {{ price.metadata.more_additional_info }}
           </li>
         </ul>
 
@@ -93,6 +68,7 @@
   {%  endif %}
 
     <div id="checkout">
+      {% block payment_form %}
       <form id="payment-form" method="POST">
         <p class="instruction"><span>{% if product.subscription_info.sub_id %}You can change{% else %}To subscribe, enter {% endif %} your payment details below</p>
         <section>
@@ -171,7 +147,9 @@
       </form>
       <div id="card-errors" class="element-errors"></div>
     </div>
+    {% endblock %}
 
+    {% block confirmation %}
     <div id="confirmation">
       <div class="status success">
         <h1 id="success-header">{% if product.subscription_info.sub_id %}You have successfully changed your payment method!{% else %}Your subscription is complete.{% endif %}</h1>
@@ -184,8 +162,10 @@
         <p class="error-message"></p>
       </div>
     </div>
+  {% endblock %}
+  {% endblock %}
 
-  </main>
+  {% block additional_content %}
   <aside id="summary">
     <div class="header">
       <h1>Subscription Summary</h1>
@@ -229,7 +209,6 @@
   </script>
   <script src="https://js.stripe.com/v3/"></script>
   <script src="{%  static 'js/django_stripe/api.js' %}"></script>
+  <script src="{%  static 'js/django_stripe/formatters.js' %}"></script>
   <script src="{%  static 'js/django_stripe/payments.js' %}"></script>
-</body>
-
-</html>
+{% endblock %}>

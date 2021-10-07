@@ -25,6 +25,9 @@ from .types import DjangoUserProtocol, SubscriptionInfoWithEvaluation
 FREE = "FREE"
 
 
+subscription_alive_statuses = ["active", "incomplete", "trialing", "past_due", "unpaid"]
+
+
 def add_stripe_customer_if_not_existing(f):
     @wraps(f)
     def wrapper(user: DjangoUserProtocol, *args, **kwargs):

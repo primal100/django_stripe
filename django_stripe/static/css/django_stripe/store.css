@@ -1320,3 +1320,43 @@ button:active {
     text-align: center;
   }
 }
+
+
+.visa {
+  padding-left: 40px;
+  background: url(../../images/django_stripe/cards/visa.svg) left center no-repeat;
+}
+
+
+.mastercard {
+  padding-left: 40px;
+  background: url(../../images/django_stripe/cards/mastercard.svg) left center no-repeat;
+
+}
+
+.amex {
+  padding-left: 40px;
+  background: url(../../images/django_stripe/cards/amex.svg) left center no-repeat;
+
+}
+
+
+.discover {
+  padding-left: 40px;
+  background: url(../../images/django_stripe/cards/discover.svg) left center no-repeat;
+
+}
+
+
+.jcb {
+  padding-left: 40px;
+  background: url(../../images/django_stripe/cards/jcb.svg) left center no-repeat;
+
+}
+
+
+.unionpay {
+  padding-left: 40px;
+  background: url(../../images/django_stripe/cards/unionpay.svg) left center no-repeat;
+
+}

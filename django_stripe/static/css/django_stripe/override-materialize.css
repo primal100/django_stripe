@@ -19,3 +19,11 @@ select {
 .card-content {
   max-height: 75px;
 }
+
+.btn {
+  cursor: pointer;
+}
+
+a {
+  cursor: pointer;
+}
