@@ -1,0 +1,49 @@
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <title>{{ title }}</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:site" content="@stripe">
+  <meta name="twitter:title" content="Stripe Payments Demo">
+  <meta name="twitter:description" content="Sample store accepting universal payments on the web with Stripe Elements, Payment Request, Apple Pay, Google Pay, and the Sources API.">
+  <meta name="twitter:image" content="https://stripe-payments-demo.appspot.com/images/twitter.png">
+      <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
+    <link rel="stylesheet" type="text/css" href="{%  static 'css/django_stripe/override-materialize.css' %}">
+    <link rel="stylesheet" type="text/css" href="{%  static 'css/django_stripe/pricing.css' %}">
+  <link rel="stylesheet" type="text/css" href="{%  static 'css/django_stripe/store.css' %}">
+  <link rel="icon" type="image/png" sizes="104x80" href="{%  static 'images/django_stripe/logo.png' %}">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+
+</head>
+
+<body>
+ {% block modals %}
+  {%  endblock %}
+  <main id="main" class="checkout">
+    <header class="header">
+        {% block header %}
+      <a class="shop" href="/">{{ title }}</a>
+      <a class="github" href="{{ header_link }}">{{ header_link_text }}</a>
+        {%  endblock %}
+    </header>
+
+{% block main_content %}
+
+
+{% endblock %}
+
+  </main>
+
+{% block additional_content %}
+
+{% endblock %}
+
+</body>
+
+</html>

@@ -22,6 +22,12 @@ from typing import List, Dict, Any, Callable, Generator, Optional, Type
 from .types import DjangoUserProtocol, SubscriptionInfoWithEvaluation
 
 
+FREE = "FREE"
+
+
+subscription_alive_statuses = ["active", "incomplete", "trialing", "past_due", "unpaid"]
+
+
 def add_stripe_customer_if_not_existing(f):
     @wraps(f)
     def wrapper(user: DjangoUserProtocol, *args, **kwargs):
@@ -77,7 +83,8 @@ def modify_payment_method(user: DjangoUserProtocol, obj_id: str, set_as_default:
         logger.debug('Setting default method for user %s to %s with keys: %s', user.id, obj_id, list(kwargs.keys()))
         modify_customer(user, invoice_settings={
             'default_payment_method': obj_id})
-        return retrieve(user, stripe.PaymentMethod, obj_id)
+        if not kwargs:
+            return retrieve(user, stripe.PaymentMethod, obj_id)
     logger.debug('Modifying payment method %s for user %s', user.id, obj_id)
     return modify(user, stripe.PaymentMethod, obj_id, **kwargs)
 
@@ -274,7 +281,7 @@ def is_subscribed_and_cancelled_time(user, product_id: str = None) -> Subscripti
     product_id = product_id or settings.STRIPE_DEFAULT_SUBSCRIPTION_PRODUCT_ID
     if hasattr(user, 'allowed_access_until') and (
             user.allowed_access_until and user.allowed_access_until >= timezone.now()):
-        return {'subscribed': True, 'cancel_at': None, 'current_period_end': int(user.allowed_access_until.timestamp()),
+        return {'sub_id': FREE, 'cancel_at': None, 'current_period_end': int(user.allowed_access_until.timestamp()),
                 'evaluation': True, 'product_id': product_id, 'price_id': settings.STRIPE_FREE_ACCESS_PRICE_ID}
     sub_info: SubscriptionInfoWithEvaluation = subscriptions.is_subscribed_and_cancelled_time(user, product_id)
     sub_info['evaluation'] = False
@@ -283,7 +290,7 @@ def is_subscribed_and_cancelled_time(user, product_id: str = None) -> Subscripti
 
 def is_subscribed(user, product_id: str = None) -> bool:
     product_id = product_id or settings.STRIPE_DEFAULT_SUBSCRIPTION_PRODUCT_ID
-    return is_subscribed_and_cancelled_time(user, product_id)['subscribed']
+    return bool(is_subscribed_and_cancelled_time(user, product_id)['sub_id'])
 
 
 def get_subscription_cache() -> cache:

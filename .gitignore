@@ -2,3 +2,4 @@
 stripe-subscriptions/*
 *.sqlite3
 *.coverage
+*.pyc

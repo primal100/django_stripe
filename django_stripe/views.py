@@ -1,6 +1,9 @@
+import datetime
+
 import stripe
 from django.views.generic import RedirectView, TemplateView
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.urls import reverse
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
@@ -8,8 +11,10 @@ from rest_framework.views import APIView
 from .conf import settings
 from . import serializers
 from . import payments
+from .utils import get_user_if_token_user
+from .logging import logger
 from .view_mixins import StripeListMixin, StripeCreateMixin, StripeCreateWithSerializerMixin, StripeModifyMixin, StripeDeleteMixin
-from typing import Dict, Any, List, Iterable
+from typing import Dict, Any, List, Iterable, Optional
 
 
 class StripePriceCheckoutView(APIView, StripeCreateMixin):
@@ -111,6 +116,7 @@ class StripeSubscriptionView(APIView, StripeListMixin, StripeCreateWithSerialize
                              StripeModifyMixin, StripeDeleteMixin):
     stripe_resource = stripe.Subscription
     status_code = status.HTTP_201_CREATED
+    delete_status_code = status.HTTP_200_OK
     serializer_classes = {
         'GET': serializers.SubscriptionListSerializer,
         'PUT': serializers.SubscriptionModifySerializer,
@@ -159,3 +165,87 @@ class GoToBillingPortalView(LoginRequiredMixin, RedirectView):
     def get_redirect_url(self, *args, **kwargs) -> str:
         session = payments.create_billing_portal(self.request.user, **kwargs)
         return session['url']
+
+
+class BaseCheckoutView(LoginRequiredMixin, TemplateView):
+    product_id: str = None
+    date_format: str = "%A %d %B %Y"
+
+    def get_product_id(self) -> str:
+        return self.product_id or settings.STRIPE_DEFAULT_SUBSCRIPTION_PRODUCT_ID
+
+    def get(self, request, *args, **kwargs):
+        if request.user and request.user.is_authenticated:
+            payments.create_customer(request.user)
+        return super().get(request, *args, **kwargs)
+
+    def get_default_country(self):
+        country = None
+        if settings.COUNTRY_HEADER:
+            country = self.request.META.get(settings.COUNTRY_HEADER, '')
+        if not country:
+            country = settings.STRIPE_CHECKOUT_DEFAULT_COUNTRY
+        return country or "US"
+
+    def timestamp_format(self, timestamp: Optional[int]):
+        if timestamp:
+            return datetime.datetime.fromtimestamp(timestamp).strftime(self.date_format)
+        return None
+
+
+class SubscriptionPortalView(BaseCheckoutView):
+    template_name = 'django_stripe/subscription_portal.html'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        user = get_user_if_token_user(self.request.user)
+        product_id = self.get_product_id()
+        logger.debug("Opening payments portal for user %d, product %s", user.id, product_id)
+        context['product'] = payments.retrieve_product(user, product_id)
+        context['product']['subscription_info']['current_period_end'] = self.timestamp_format(context['product']['subscription_info']['current_period_end'])
+        context['product']['subscription_info']['cancel_at'] = self.timestamp_format(context['product']['subscription_info']['cancel_at'])
+        context['dev_mode'] = settings.STRIPE_CHECKOUT_DEV_MODE and 'test' in settings.STRIPE_PUBLISHABLE_KEY
+        context['title'] = settings.STRIPE_CHECKOUT_TITLE
+        context['header_link'] = reverse("subscription-history")
+        context['header_link_text'] = "Subscription History"
+        context['js_config'] = {
+            'subscriptionInfo': context['product']['subscription_info'],
+            'user_email': user.email,
+            'country': self.get_default_country(),
+            'hide_postal_code': settings.STRIPE_CREDIT_CARD_HIDE_POSTAL_CODE,
+            'stripePublishableKey': settings.STRIPE_PUBLISHABLE_KEY,
+            'paymentMethods': settings.STRIPE_PAYMENT_METHOD_TYPES,
+            'subscription_api_url': reverse("subscriptions"),
+            'setup_intents_url': reverse("setup-intents")
+        }
+        return context
+
+
+class SubscriptionHistoryView(BaseCheckoutView):
+    template_name = 'django_stripe/subscription_history.html'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        user = get_user_if_token_user(self.request.user)
+        product_id = self.get_product_id()
+        logger.debug("Opening subscription history portal for user %d, product %s", user.id, product_id)
+        subscriptions = payments.list_customer_resource(user, stripe.Subscription)
+        context['subscription'] = None
+        for status in payments.subscription_alive_statuses:
+            relevant_subscriptions = sorted(filter(lambda s: s['status'] == status, subscriptions), key= lambda s: s['created'], reverse=True)
+            if relevant_subscriptions:
+                context['subscription'] = relevant_subscriptions[0]
+                break
+        payment_method_id = context['subscription'].get('default_payment_method', None) if context['subscription'] else None
+        if payment_method_id:
+            context['payment_method'] = payments.retrieve(user, stripe.PaymentMethod, payment_method_id)
+        else:
+            context['payment_method'] = None
+        context['invoices'] = payments.list_customer_resource(user, stripe.Invoice)
+        context['header_link'] = reverse("subscription-portal")
+        context['header_link_text'] = "Subscription Portal"
+        context['subscription']['current_period_end'] = self.timestamp_format(context['subscription']['current_period_end'])
+        context['subscription']['cancel_at'] = self.timestamp_format(context['subscription']['cancel_at'])
+        context['dev_mode'] = settings.STRIPE_CHECKOUT_DEV_MODE and 'test' in settings.STRIPE_PUBLISHABLE_KEY
+        context['title'] = settings.STRIPE_CHECKOUT_TITLE
+        return context

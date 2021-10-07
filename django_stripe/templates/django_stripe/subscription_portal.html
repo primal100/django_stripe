@@ -1,0 +1,214 @@
+{% extends "django_stripe/base_portal.html" %}
+{% load static %}
+
+
+{% block modals %}
+  {% if product.subscription_info.sub_id %}
+
+  <!-- Modal Structure -->
+  <div id="modal1" class="modal">
+    <div class="modal-content">
+      <h4>Cancel Subscription</h4>
+      <p>Are you sure you want to cancel your subscription?</p>
+    </div>
+    <div class="modal-footer">
+	  <a href="#!" class="modal-close waves-effect waves-red btn-flat">No</a>
+	  <a href="#!" class="modal-close cancel-subscription-button waves-effect waves-green btn-flat">Yes</a>
+    </div>
+  </div>
+
+  {% endif %}
+
+{%  endblock %}
+
+  {% block main_content %}
+    {% if product.subscription_info.sub_id %}
+        <p>Thanks for being a subscriber. Your next payment is due on {{ product.subscription_info.current_period_end }}. </p>
+        <p>You may update your payment method below. Click <a class="modal-trigger" href="#modal1">here</a> to cancel your subscription.</p>
+    {%  else %}
+
+
+  <div class="container">
+      {% block prices %}
+      <div class="row">
+    {% for price in product.prices %}
+
+    <div class=" col s12 m4">
+      <div class="card pricing-option" data-currency="{{ price.currency }}" data-unit_amount={{ price.unit_amount }} data-interval="{{ price.recurring.interval }}">
+
+        <div class="card-content center">
+          <h5 class=''>{{ price.metadata.price_header  }}</h5>
+        </div>
+          <div class="card-content center">
+            <h1 class='blue-text price-number'></h1>
+          </div>
+
+        <ul class='collection center'>
+              <li class='collection-item'>
+                  {{ price.metadata.additional_info }}
+          </li>
+              <li class='collection-item'>
+                {{ price.metadata.more_additional_info }}
+          </li>
+        </ul>
+
+        <div class="card-content center">
+          <div class="row">
+            <div class="col s12">
+              <button id="{{ price.id }}" class='btn green price-selection'>Subscribe Now</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+      </div>
+    {%  endblock %}
+    </div>
+  {%  endif %}
+
+    <div id="checkout">
+      {% block payment_form %}
+      <form id="payment-form" method="POST">
+        <p class="instruction"><span>{% if product.subscription_info.sub_id %}You can change{% else %}To subscribe, enter {% endif %} your payment details below</p>
+        <section>
+          <h2>Billing Information</h2>
+          <fieldset class="with-state">
+            <label>
+              <span>Name</span>
+              <input name="name" class="field first-field" placeholder="Jenny Rosen" required>
+            </label>
+            <label>
+              <span>Address</span>
+              <input name="address" class="field" placeholder="185 Berry Street Suite 550">
+            </label>
+            <label class="city">
+              <span>City</span>
+              <input name="city" class="field" placeholder="San Francisco">
+            </label>
+            <label class="state">
+              <span>State</span>
+              <input name="state" class="field" placeholder="CA">
+            </label>
+            <label class="zip">
+              <span>ZIP</span>
+              <input name="postal_code" class="field" placeholder="94107">
+            </label>
+            <label class="select">
+              <span>Country</span>
+              <div id="country" class="field US">
+                <select name="country">
+                   {%  block countries %}
+                  <option value="AU">Australia</option>
+                  <option value="AT">Austria</option>
+                  <option value="BE">Belgium</option>
+                  <option value="BR">Brazil</option>
+                  <option value="CA">Canada</option>
+                  <option value="CN">China</option>
+                  <option value="DK">Denmark</option>
+                  <option value="FI">Finland</option>
+                  <option value="FR">France</option>
+                  <option value="DE">Germany</option>
+                  <option value="HK">Hong Kong</option>
+                  <option value="IE">Ireland</option>
+                  <option value="IT">Italy</option>
+                  <option value="JP">Japan</option>
+                  <option value="LU">Luxembourg</option>
+                  <option value="MY">Malaysia</option>
+                  <option value="MX">Mexico</option>
+                  <option value="NL">Netherlands</option>
+                  <option value="NZ">New Zealand</option>
+                  <option value="NO">Norway</option>
+                  <option value="PL">Poland</option>
+                  <option value="PT">Portugal</option>
+                  <option value="SG">Singapore</option>
+                  <option value="ES">Spain</option>
+                  <option value="SE">Sweden</option>
+                  <option value="CH">Switzerland</option>
+                  <option value="GB">United Kingdom</option>
+                  <option value="US" selected="selected">United States</option>
+                    {% endblock countries %}
+                </select>
+              </div>
+            </label>
+          </fieldset>
+         </section>
+        <section>
+          <div class="payment-info card-details visible">
+            <fieldset>
+              <label>
+                <span>Card</span>
+                <div id="card-element" class="field"></div>
+              </label>
+            </fieldset>
+          </div>
+        </section>
+           <button class="payment-button" type="submit">{% if product.subscription_info.sub_id %}Change Payment Method{% else %}Subscribe{% endif %}</button>
+      </form>
+      <div id="card-errors" class="element-errors"></div>
+    </div>
+    {% endblock %}
+
+    {% block confirmation %}
+    <div id="confirmation">
+      <div class="status success">
+        <h1 id="success-header">{% if product.subscription_info.sub_id %}You have successfully changed your payment method!{% else %}Your subscription is complete.{% endif %}</h1>
+        <p id="success-text">Your payment details have been confirmed!</p>
+        <p class="note">Thank you!</p>
+      </div>
+      <div class="status error">
+        <h1 id="error-header">Oops, payment setup failed.</h1>
+        <p id="error-text">It looks like your subscription could not be setup at this time. Please try again or enter a different payment option.</p>
+        <p class="error-message"></p>
+      </div>
+    </div>
+  {% endblock %}
+  {% endblock %}
+
+  {% block additional_content %}
+  <aside id="summary">
+    <div class="header">
+      <h1>Subscription Summary</h1>
+    </div>
+    <div id="order-total">
+      {%  if dev_mode %}
+      <div class="line-item demo">
+        <div id="demo">
+          <p class="label">Demo in test mode</p>
+          <p class="note">You can copy and paste the following test cards to trigger different scenarios:</p>
+          <table class="note">
+            <tr>
+              <td>Default US card:</td>
+              <td class="card-number">4242<span></span>4242<span></span>4242<span></span>4242</td>
+            </tr>
+            <tr>
+              <td><a href="https://stripe.com/guides/strong-customer-authentication" target="_blank">Authentication</a> required:</td>
+              <td class="card-number">4000<span></span>0027<span></span>6000<span></span>3184</td>
+            </tr>
+            </table>
+          <p class="note">
+            See the <a href="https://stripe.com/docs/testing#cards" target="_blank">docs</a> for a full list of test cards.
+              Non-card payments will redirect to test pages.</p>
+            <p class="note">
+            This section will disappear if the STRIPE PUBLISHABLE KEY does not contain "test". It can also be disabled by setting STRIPE_CHECKOUT_DEV_MODE=false in settings.py
+          </p>
+        </div>
+      </div>
+        {% endif %}
+      <div class="line-item total">
+        <p class="label">Total</p>
+        <p class="total-price"></p>
+      </div>
+    </div>
+  </aside>
+  <!-- Stripe.js v3 for Elements -->
+ {{ js_config|json_script:"context" }}
+{% csrf_token %}
+  <script>
+      const config = JSON.parse(document.getElementById('context').textContent);
+  </script>
+  <script src="https://js.stripe.com/v3/"></script>
+  <script src="{%  static 'js/django_stripe/api.js' %}"></script>
+  <script src="{%  static 'js/django_stripe/formatters.js' %}"></script>
+  <script src="{%  static 'js/django_stripe/payments.js' %}"></script>
+{% endblock %}>

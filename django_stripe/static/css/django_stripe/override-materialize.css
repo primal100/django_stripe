@@ -1,0 +1,29 @@
+input {
+  border-bottom: initial!important;
+  box-shadow: initial!important;
+  font-size: initial!important;
+  height: initial!important;
+  margin: initial!important;
+  padding: initial!important;
+  width: initial!important;
+}
+
+select {
+  display: initial;
+}
+
+.container {
+ width:initial;
+}
+
+.card-content {
+  max-height: 75px;
+}
+
+.btn {
+  cursor: pointer;
+}
+
+a {
+  cursor: pointer;
+}

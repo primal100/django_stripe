@@ -12,6 +12,7 @@ class ProductSerializer(serializers.Serializer):
 
 class PaymentMethodModifySerializer(serializers.Serializer):
     set_as_default = serializers.BooleanField(default=False, required=False)
+    billing_details = serializers.JSONField(required=False)
 
 
 class SubscriptionModifySerializer(serializers.Serializer):
