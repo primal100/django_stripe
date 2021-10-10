@@ -18,9 +18,6 @@ from typing import Dict, Any, Callable, List, Type, Union, Iterable, Optional
 DataType = Union[Dict[str, Any], List[Any]]
 
 
-logger = logging.getLogger("django_stripe")
-
-
 class StripeViewMixin(Protocol):
     stripe_resource = None
     throttle_scope: str = 'payments'
@@ -72,29 +69,29 @@ class StripeViewWithSerializerMixin(StripeViewMixin, Protocol):
     serializer_class: Type = None
     serializer_classes: Dict[str, Type] = None
 
-    def get_serializer_class(self, request: Request) -> Optional[Type]:
+    def get_serializer_class(self) -> Optional[Type]:
         if self.serializer_classes:
-            serializer_class = self.serializer_classes.get(request.method)
+            serializer_class = self.serializer_classes.get(self.request.method)
             if serializer_class:
                 return serializer_class
         return self.serializer_class
 
-    def get_serializer_context(self, request) -> Dict[str, Any]:
+    def get_serializer_context(self) -> Dict[str, Any]:
         return {
-            'request': request,
+            'request': self.request,
             'view': self
         }
 
-    def get_serializer(self, request, *args, **kwargs):
-        serializer_class = self.get_serializer_class(request)
+    def get_serializer(self, *args, **kwargs):
+        serializer_class = self.get_serializer_class()
         if serializer_class:
-            kwargs.setdefault('context', self.get_serializer_context(request))
+            kwargs.setdefault('context', self.get_serializer_context())
             return serializer_class(*args,  **kwargs)
         return None
 
     def run_serialized_stripe_response(self, request: Request, method: Callable = None,
                                        status_code: int = None, **kwargs) -> Response:
-        serializer = self.get_serializer(request, data=request.data or request.query_params)
+        serializer = self.get_serializer(data=request.data or request.query_params)
         if not serializer:
             result = self.run_stripe(request, method=method, **kwargs)
         elif serializer.is_valid():

@@ -47,10 +47,6 @@ class Settings:
         return getattr(django_settings, 'STRIPE_KEEP_CUSTOMER_DETAILS_UPDATED', True)
 
     @property
-    def STRIPE_PUBLIC_KEY(self) -> str:
-        return getattr(django_settings, 'STRIPE_PUBLIC_KEY', os.environ.get('STRIPE_PUBLIC_KEY'))
-
-    @property
     def STRIPE_NEW_CUSTOMER_GET_KWARGS(self) -> bool:
         return getattr(django_settings, 'STRIPE_NEW_CUSTOMER_GET_KWARGS', return_empty_kwargs)
 

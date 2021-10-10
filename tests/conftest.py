@@ -40,8 +40,8 @@ def pytest_addoption(parser):
 
 @pytest.fixture(scope="session", autouse=True)
 def stripe_api_key(pytestconfig):
-    stripe.api_key = pytestconfig.getoption("apikey")
-    return stripe_api_key
+    stripe.api_key = pytestconfig.getoption("apikey")   # Need to set this as ready() function runs before pytest fixtures are applied
+    return stripe.api_key
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -51,8 +51,8 @@ def stripe_public_key(pytestconfig):
 
 @pytest.fixture(autouse=True)
 def setup_settings(stripe_api_key, stripe_public_key, settings):
-    settings.STRIPE_API_KEY = stripe_api_key
-    settings.STRIPE_PUBLIC_KEY = stripe_public_key
+    settings.STRIPE_SECRET_KEY = stripe_api_key
+    settings.STRIPE_PUBLISHABLE_KEY = stripe_public_key
 
 
 @pytest.fixture(autouse=True)

@@ -18,7 +18,15 @@ User = get_user_model()
 @receiver(post_save, sender=User)
 def modify_email_if_changed_receiver(instance, created: bool,
                                      update_fields: Optional[Tuple] = None, **kwargs):
-    if settings.STRIPE_KEEP_CUSTOMER_DETAILS_UPDATED and not created and instance.stripe_customer_id and stripe.api_key and (
+    """
+    A signal receiver which keeps a user's email and description (name) updated by responding when a user is modified.
+    The function first checks if:
+    1) settings.STRIPE_KEEP_CUSTOMER_DETAILS_UPDATED is True, which is the default
+    2) If this is a modify request
+    3) If the customer already exists on Stripe
+    4) If this was prompted by User.save(update_fields=....) then is email, first_name or last_name included in the update_fields.
+    """
+    if settings.STRIPE_KEEP_CUSTOMER_DETAILS_UPDATED and not created and instance.stripe_customer_id and (
             not update_fields or any(f in update_fields for f in ('email', 'first_name', 'last_name'))):
         logger.debug("Updating user %d email in Stripe", instance.id)
         customer = stripe.Customer.retrieve(instance.stripe_customer_id)
