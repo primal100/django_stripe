@@ -1,5 +1,18 @@
 from rest_framework import serializers
 
+"""
+All serializers be subclassed and changed accordingly such as adding new fields which will then be passed to the Stripe API.
+Then subclass the appropriate view and override serializer_class.
+Some views have different serializers depending on the HTTP method. In that serializer_classes needs to be overridden.
+
+For example, for the Subscription API View:
+
+serializer_classes = {
+    'GET': serializers.SubscriptionListSerializer,
+    'PUT': serializers.SubscriptionModifySerializer,
+    'POST': serializers.SubscriptionCreateSerializer
+} 
+"""
 
 class PriceSerializer(serializers.Serializer):
     product = serializers.CharField(max_length=255, required=False)

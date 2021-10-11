@@ -1,5 +1,12 @@
+/*
+Django Rest Framework views require a CSRF Token to be sent with all POST, PUT and DELETE requests
+ */
+
 const csrfToken =  document.querySelector('input[name="csrfmiddlewaretoken"]').value;
 const headers = {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken}
+
+/*Config set in the django template*/
+
 const subscriptionUrl = config.subscription_api_url;
 const setupIntentsUrl = config.setup_intents_url;
 let selectedPriceId = null;
@@ -18,6 +25,9 @@ async function checkResponse(response){
 }
 
 async function createSetupIntent() {
+    /*
+    Creates a setup intent over the Rest API
+     */
   try {
     const response = await fetch(setupIntentsUrl, {
       method: 'POST',
@@ -31,6 +41,9 @@ async function createSetupIntent() {
 
 
 async function createSubscription(paymentMethodId) {
+     /*
+    Creates a subscription over the Rest API. The selectedPriceId is set whenever a price object is clicked.
+     */
   try {
     const response = await fetch(subscriptionUrl, {
       method: 'POST',
@@ -48,6 +61,9 @@ async function createSubscription(paymentMethodId) {
 
 
 async function modifySubscription(subscriptionId, paymentMethodId) {
+    /*
+    Change the default payment method for a subscription over the Rest API.
+     */
   try {
     const response = await fetch(`${subscriptionUrl}${subscriptionId}/`, {
       method: 'PUT',
@@ -64,6 +80,9 @@ async function modifySubscription(subscriptionId, paymentMethodId) {
 
 
 async function cancelSubscription(subscriptionId) {
+     /*
+    Cancel a subscription over the Rest API.
+     */
   try {
     const response = await fetch(`${subscriptionUrl}${subscriptionId}/` , {
       method: 'DELETE',

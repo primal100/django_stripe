@@ -1,3 +1,3 @@
-__version__ = "0.1"
+__version__ = "0.2"
 url = "https://github.com/primal100/django_stripe"
 app_name = "django_stripe"

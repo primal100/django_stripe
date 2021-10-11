@@ -18,6 +18,10 @@ from typing import Dict, Any, List, Iterable, Optional
 
 
 class StripePriceCheckoutView(APIView, StripeCreateMixin):
+    """
+    An API View for creating a Stripe Subscription Checkout. The price_id must be provided in the url.
+    Methods Supported: POST
+    """
     permission_classes = (IsAuthenticated,)
     response_keys: tuple = ("id",)
 
@@ -26,12 +30,19 @@ class StripePriceCheckoutView(APIView, StripeCreateMixin):
 
 
 class StripeSetupCheckoutView(StripePriceCheckoutView):
-
+    """
+    An API View for creating a Stripe Setup Checkout.
+    Methods Supported: POST
+    """
     def create(self, request: Request, **data) -> stripe.checkout.Session:
         return payments.create_setup_checkout(request.user, rest=True, **data)
 
 
 class StripeBillingPortalView(APIView, StripeCreateMixin):
+    """
+    An API View for creating a Stripe Billing Portal.
+    Methods Supported: POST
+    """
     permission_classes = (IsAuthenticated,)
     response_keys: tuple = ("url",)
 
@@ -40,6 +51,10 @@ class StripeBillingPortalView(APIView, StripeCreateMixin):
 
 
 class StripeSetupIntentView(APIView, StripeCreateMixin):
+    """
+    An API View for creating a Stripe Setup Intent.
+    Methods Supported: POST
+    """
     permission_classes = (IsAuthenticated,)
     response_keys = ('id', 'client_secret', 'payment_method_types')
 
@@ -48,6 +63,10 @@ class StripeSetupIntentView(APIView, StripeCreateMixin):
 
 
 class StripePricesView(APIView, StripeListMixin):
+    """
+    An API View for listing and retrieving prices including subscription information if the user is authenticated.
+    Methods Supported: GET
+    """
     serializer_class = serializers.PriceSerializer
     response_keys = ("id", "recurring", "type", "currency", "unit_amount", "unit_amount_decimal",
                      "nickname", "metadata", "product", "subscription_info")
@@ -62,6 +81,10 @@ class StripePricesView(APIView, StripeListMixin):
 
 
 class StripeProductsView(APIView, StripeListMixin):
+    """
+    An API View for listing and retrieving products including subscription information if the user is authenticated.
+    Methods Supported: GET
+    """
     serializer_class = serializers.ProductSerializer
     response_keys = ("id", "images", "metadata", "name", "prices", "shippable", "subscription_info",
                      "type", "unit_label", "url")
@@ -76,6 +99,10 @@ class StripeProductsView(APIView, StripeListMixin):
 
 
 class StripeInvoiceView(APIView, StripeListMixin):
+    """
+    An API View for listing and retrieving a user's invoices.
+    Methods Supported: GET
+    """
     stripe_resource = stripe.Invoice
     status_code = status.HTTP_200_OK
     serializer_class = serializers.InvoiceSerializer
@@ -89,6 +116,10 @@ class StripeInvoiceView(APIView, StripeListMixin):
 
 
 class StripePaymentMethodView(APIView, StripeListMixin, StripeModifyMixin, StripeDeleteMixin):
+    """
+    An API View for listing, modifying, retrieving and detaching a user's payment methods. Payment Methods are created seperately using stripe.js.
+    Methods Supported: GET, PUT, DELETE
+    """
     stripe_resource = stripe.PaymentMethod
     serializer_classes = {
         'PUT': serializers.PaymentMethodModifySerializer,
@@ -106,6 +137,10 @@ class StripePaymentMethodView(APIView, StripeListMixin, StripeModifyMixin, Strip
         return payments.modify_payment_method(request.user, obj_id=obj_id, **data)
 
     def destroy(self, request: Request, obj_id: str) -> None:
+        """
+        Detaches a payment method if a user owns it.
+        If "*" is givan as the payment method, all payment methods for that user are detached.
+        """
         if obj_id == "*":
             payments.detach_all_payment_methods(request.user)
         else:
@@ -114,6 +149,10 @@ class StripePaymentMethodView(APIView, StripeListMixin, StripeModifyMixin, Strip
 
 class StripeSubscriptionView(APIView, StripeListMixin, StripeCreateWithSerializerMixin,
                              StripeModifyMixin, StripeDeleteMixin):
+    """
+    An API View for creating, listing, modifying, cancelling and retrieving a user's subscription.
+    Methods Supported: POST, GET, PUT, DELETE
+    """
     stripe_resource = stripe.Subscription
     status_code = status.HTTP_201_CREATED
     delete_status_code = status.HTTP_200_OK
@@ -140,6 +179,10 @@ class StripeSubscriptionView(APIView, StripeListMixin, StripeCreateWithSerialize
 
 
 class GoToSetupCheckoutView(LoginRequiredMixin, TemplateView):
+    """
+    A regular Django view for redirecting a user to a newly created Stripe Setup Checkout session.
+    Methods Supported: GET
+    """
     template_name = 'django_stripe/checkout.html'
 
     def make_checkout(self):
@@ -149,25 +192,35 @@ class GoToSetupCheckoutView(LoginRequiredMixin, TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         session = self.make_checkout()
-        context.update({'sessionId': session['id'], 'stripe_public_key': settings.STRIPE_PUBLIC_KEY})
+        context.update({'sessionId': session['id'], 'stripe_public_key': settings.STRIPE_PUBLISHABLE_KEY})
         return context
 
 
 class GoToCheckoutView(GoToSetupCheckoutView):
-
+    """
+    A regular Django view for redirecting a user to a newly created Subscription Checkout session.
+    Methods Supported: GET
+    """
     def make_checkout(self, price_id: str = None):
         price_id = self.kwargs['price_id']
         return payments.create_subscription_checkout(self.request.user, price_id=price_id)
 
 
 class GoToBillingPortalView(LoginRequiredMixin, RedirectView):
-
+    """
+    A regular Django view for redirecting a user to a newly created Billing Portal session.
+    Methods Supported: GET
+    """
     def get_redirect_url(self, *args, **kwargs) -> str:
         session = payments.create_billing_portal(self.request.user, **kwargs)
         return session['url']
 
 
 class BaseCheckoutView(LoginRequiredMixin, TemplateView):
+    """
+    Base Class for django_stipe custom checkouts views.
+    Methods Supported: GET
+    """
     product_id: str = None
     date_format: str = "%A %d %B %Y"
 
@@ -194,6 +247,10 @@ class BaseCheckoutView(LoginRequiredMixin, TemplateView):
 
 
 class SubscriptionPortalView(BaseCheckoutView):
+    """
+    The django_stripe custom checkout views. Allows a user to select a price and then subscribe on the same page.
+    Methods Supported: GET
+    """
     template_name = 'django_stripe/subscription_portal.html'
 
     def get_context_data(self, **kwargs):
@@ -222,6 +279,10 @@ class SubscriptionPortalView(BaseCheckoutView):
 
 
 class SubscriptionHistoryView(BaseCheckoutView):
+    """
+    The django_stripe view display a user's subscription status and invoice history.
+    Methods Supported: GET
+    """
     template_name = 'django_stripe/subscription_history.html'
 
     def get_context_data(self, **kwargs):

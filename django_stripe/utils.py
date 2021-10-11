@@ -22,6 +22,10 @@ def get_user_if_token_user(user: Any):
 
 
 def get_actual_user(f):
+    """
+    Decorator to support djangorestframework-simplejwt TokenUser. The stripe_customer_id is not available in that case so it is required to retrieve the User from the database.
+    This decorator makes sure the database user model is provided to the child function.
+    """
     @wraps(f)
     def wrapper(user, *args, **kwargs):
         user = get_user_if_token_user(user)
@@ -30,4 +34,7 @@ def get_actual_user(f):
 
 
 def user_description(user) -> str:
+    """
+    The description sent to Stripe when a customer is created or modified
+    """
     return f'{user.first_name} {user.last_name}'
