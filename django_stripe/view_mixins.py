@@ -37,12 +37,18 @@ class StripeViewMixin(Protocol):
 
     @staticmethod
     def get_value(item: Dict[str, Any], key: str) -> Any:
+        """
+        Nested values can be set using __ in self.response_keys and self.response_keys_exclude
+        """
         value = item
         for k in key.split("__"):
             value = value[k]
         return value
 
     def make_response(self, item: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Filter which keys are returned in the response.
+        """
         if self.response_keys_exclude:
             return {k: item[k] for k in item.keys() if k not in self.response_keys_exclude}
         if self.response_keys:
@@ -50,6 +56,10 @@ class StripeViewMixin(Protocol):
         return item
 
     def run_stripe(self, request: Request, method: Callable = None, **data) -> DataType:
+        """
+        Run a request to the Stripe API and convert any Exceptions to a Rest Framework Exception.
+        This is then automatically converted to a HTTP response containing the error.
+        """
         method = method or self.make_request
         try:
             return method(request, **data)
@@ -70,6 +80,10 @@ class StripeViewWithSerializerMixin(StripeViewMixin, Protocol):
     serializer_classes: Dict[str, Type] = None
 
     def get_serializer_class(self) -> Optional[Type]:
+        """
+        Some views have different serializer classes depending on the HTTP method. These are in variable self.serializer_classes.
+        Otherwise a single serializer_class is selected.
+        """
         if self.serializer_classes:
             serializer_class = self.serializer_classes.get(self.request.method)
             if serializer_class:
@@ -123,6 +137,10 @@ class StripeListMixin(StripeViewWithSerializerMixin, Protocol):
         return self.prepare_list(self.list(request, **data))
 
     def get_one(self, request: Request, obj_id: str) -> Dict[str, Any]:
+        """
+        Returns an exception if a user tries to view an object belonging to another user.
+        Rather than giving a permission error, they are told the object does not exist at all.
+        """
         try:
             return self.make_response(self.retrieve(request, obj_id))
         except subscriptions.exceptions.StripeWrongCustomer as e:
@@ -170,6 +188,10 @@ class StripeModifyMixin(StripeViewWithSerializerMixin, Protocol):
         return payments.modify(request.user, self.stripe_resource, obj_id, **data)
 
     def run_modify(self, request: Request, obj_id: str, **data) -> Dict[str, Any]:
+        """
+        Returns an exception if a user tries to modify an object belonging to another user.
+        Rather than giving a permission error, they are told the object does not exist at all.
+        """
         try:
             return self.make_response(self.modify(request, obj_id, **data))
         except subscriptions.exceptions.StripeWrongCustomer:
@@ -188,6 +210,10 @@ class StripeDeleteMixin(StripeViewMixin, Protocol):
         return payments.delete(request.user, self.stripe_resource, obj_id)
 
     def run_delete(self, request: Request, obj_id: str):
+        """
+        Returns an exception if a user tries to delete an object belonging to another user.
+        Rather than giving a permission error, they are told the object does not exist at all.
+        """
         try:
             result = self.destroy(request, obj_id=obj_id)
             if result:

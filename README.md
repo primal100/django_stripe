@@ -793,3 +793,5 @@ Vary: Accept
 
 
 ```
+
+## Function Reference
