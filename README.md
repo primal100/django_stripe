@@ -141,7 +141,7 @@ You should now see the custom checkout when you browse to ```localhost:8000```. 
 
 ## Rest API
 
-Most of the offical Stripe APIs are intended to be run server-side (the Secret API Key is required). The ```Django Stripe``` rest APIs are built on top of those and are designed to be run from the client. They convert the client request including authentication details into a server-sde request to the Stripe API and return only data that is relevant to the user. They also prevent users viewing information belonging to other users by checking their customer id.
+Most of the offical Stripe APIs are intended to be run server-side (the Secret API Key is required). The ```Django Stripe``` rest APIs are built on top of those and are designed to be run from the client. They convert the client request including authentication details into a server-side request to the Stripe API and return only data that is relevant to the user. They also prevent users viewing information belonging to other users by checking their customer id.
 
 The Rest APIs are implemented using ```Django Rest Framework```. The easiest way to get familiar with the APIs is to use the ```rest-framework``` browsable API by opening a browser and going to the API URL.
 
@@ -194,7 +194,7 @@ Vary: Accept
         "id": "prod_Jo3KY017h0SZ1x",
         "images": [],
         "metadata": {},
-        "name": "Decoder Subscription",
+        "name": "API Subscription",
         "prices": [
             {
                 "id": "price_1JB9PtCz06et8VuzfLu1Z9bf",
