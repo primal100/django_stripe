@@ -16,6 +16,7 @@ Here's an example of how the self-hosted checkout may look. The prices text can 
 
 ![Checkout image here](https://raw.githubusercontent.com/primal100/django_stripe/master/docs/images/checkout.png)
 
+At least for now, there are no webhooks used and no additional models. Anytime Stripe data is needed it is requested from the Stripe API. Caching is implemented in some cases to reduce the number of requests.
 
 ## Getting Started
 
