@@ -14,7 +14,7 @@ The library is built with a particular focus on Django users which are central t
 
 Here's an example of how the self-hosted checkout may look. The prices text can be overridden in the Stripe Dashboard by adding metadata. As it's a Django template everything can be overridden using blocks.
 
-![Checkout Image here](docs/images/checkout.png?raw=true "Checkout")
+![Checkout image here](https://raw.githubusercontent.com/primal100/django_stripe/master/docs/images/checkout.png)
 
 
 ## Getting Started
@@ -22,7 +22,7 @@ Here's an example of how the self-hosted checkout may look. The prices text can 
 To install:
 
 ```shell
-pip install django-stripe
+pip install django-stripe-subs
 ```
 
 You must have a ```User``` model which implements the ```stripe_customer_id``` property:
