@@ -1107,13 +1107,13 @@ The function signature is:
 
 - ```STRIPE_ALLOW_DEFAULT_PRODUCT_ONLY: str```: If set to True, users will be restricting from accessing any product_id other than the default one.
 
-- ```STRIPE_CREDIT_CARD_HIDE_POSTAL_CODE: str```: Whether to show the Postal Code field in Stripe Elements in the django_stripe checkout.
+- ```STRIPE_CREDIT_CARD_HIDE_POSTAL_CODE: str```: Whether to show the Postal Code field in Stripe Elements in the ```django_stripe``` checkout.
 
 - ```STRIPE_CHECKOUT_TITLE: str```:  Title of the ```django_stripe``` checkout page.
 
-- ```STRIPE_CHECKOUT_DEV_MODE: str```: Show additional information such as test credit card numbers in the django_stripe checkout page. This will be overridden as False if test does not appear in the Stripe Publishable key so it is safe to always leave this as True.
+- ```STRIPE_CHECKOUT_DEV_MODE: str```: Show additional information such as test credit card numbers in the ```django_stripe``` checkout page. This will be overridden as False if test does not appear in the Stripe Publishable key so it is safe to always leave this as True.
 
-- ```STRIPE_CHECKOUT_DEFAULT_COUNTRY: str```: The default country to set the Billing Details form to in the django_stripe checkout page.
+- ```STRIPE_CHECKOUT_DEFAULT_COUNTRY: str```: The default country to set the Billing Details form to in the ```django_stripe``` checkout page.
 
 - ```COUNTRY_HEADER: str```:  If a two-letter country code exists as a header in the request, set the header name here and the value of the header will be used as the default country in the django-stripe checkout page. For example, if requests pass through Cloudflare, set this value to ```'HTTP_CF_IPCOUNTRY'```. If this header is available, it takes priority, otherwise ```STRIPE_CHECKOUT_DEFAULT_COUNTRY``` is used.
 
