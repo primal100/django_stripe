@@ -1082,8 +1082,8 @@ The following settings can be configured in settings.py or where mentioned, as a
 
 - ```STRIPE_APP_DATA: str```: Optional data to send with Stripe API requests
 
-- ```STRIPE_CHECKOUT_SUCCESS_URL: str```: URL to redirect to after Stripe Checkout is completed
-- 
+- ```STRIPE_CHECKOUT_SUCCESS_URL: str```: URL to redirect to after Stripe Checkout is completed 
+
 - ```STRIPE_CHECKOUT_CANCEL_URL: str```: URL to redirect to if a Stripe Checkout is cancelled
 
 - ```STRIPE_PAYMENT_METHOD_TYPES: str```: List of payment methods supported by checkout sessions and Setup Intents.
