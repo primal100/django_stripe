@@ -12,7 +12,7 @@ There are three ways to use ```django-stripe```:
 
 The library is built with a particular focus on Django users which are central to everything. For example, users are restricted from accessing private objects not belonging to them.
 
-The checkout looks like this:
+Here's an example of how the self-hosted checkout may look. The prices text can be overridden in the Stripe Dashboard by adding metadata. As it's a Django template everything can be overridden using blocks.
 
 ![Checkout Image here](docs/images/checkout.png?raw=true "Checkout")
 
@@ -100,7 +100,7 @@ STRIPE_DEFAULT_SUBSCRIPTION_PRODUCT_ID="prod_..."
 ```
 
 
-The three Stripe settings can also be provided by environment variables (recommended for production).
+The three Stripe settings can also be provided with environment variables (recommended for production).
 
 There are many optional settings which will be covered later.
 
@@ -1109,7 +1109,7 @@ The function signature is:
 
 - ```STRIPE_CREDIT_CARD_HIDE_POSTAL_CODE: str```: Whether to show the Postal Code field in Stripe Elements in the django_stripe checkout.
 
-- ```STRIPE_CHECKOUT_TITLE: str```:  Title of the django_stripe checkout page.
+- ```STRIPE_CHECKOUT_TITLE: str```:  Title of the ```django_stripe``` checkout page.
 
 - ```STRIPE_CHECKOUT_DEV_MODE: str```: Show additional information such as test credit card numbers in the django_stripe checkout page. This will be overridden as False if test does not appear in the Stripe Publishable key so it is safe to always leave this as True.
 

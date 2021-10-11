@@ -829,6 +829,6 @@ def selenium_go_to_billing_portal(selenium_authenticated: WebDriver, live_server
 
 @pytest.fixture
 def django_cache() -> cache:
-    cache = payments.get_subscription_cache()
+    cache = payments._get_subscription_cache()
     yield cache
     cache.clear()
