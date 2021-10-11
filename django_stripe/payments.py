@@ -65,6 +65,7 @@ def create_customer(user: DjangoUserProtocol, **kwargs):
     """
     Creates a new customer over the stripe API using the user data. The customer id is saved to the user object.
     The new_customer signal is sent.
+    The method is typically called automatically via the add_stripe_customer_if_not_existing decorator on most functions in this module.
     """
     kwargs = kwargs or {}
     if not user or not user.is_authenticated:
@@ -114,7 +115,7 @@ def modify_payment_method(user: DjangoUserProtocol, obj_id: str, set_as_default:
 
 
 @add_stripe_customer_if_not_existing
-def create_checkout(user: subscriptions.types.UserProtocol, method: Callable, **kwargs) -> stripe.checkout.Session:
+def create_checkout(user: DjangoUserProtocol, method: Callable, **kwargs) -> stripe.checkout.Session:
     """
     Creates a new Stripe checkout session for this user.
     Recommended to call create_subscription_checkout or create_setup_checkout instead.
@@ -134,7 +135,7 @@ def create_checkout(user: subscriptions.types.UserProtocol, method: Callable, **
     return session
 
 
-def create_subscription_checkout(user: subscriptions.types.UserProtocol, price_id: str, rest: bool = False,
+def create_subscription_checkout(user: DjangoUserProtocol, price_id: str, rest: bool = False,
                                  **kwargs) -> stripe.checkout.Session:
     """
     Creates a new Stripe subscription checkout session for this user for the given price.
@@ -149,7 +150,7 @@ def create_subscription_checkout(user: subscriptions.types.UserProtocol, price_i
     return create_checkout(user, subscriptions.create_subscription_checkout, price_id=price_id, **kwargs)
 
 
-def create_setup_checkout(user: subscriptions.types.UserProtocol, rest: bool = False, **kwargs) -> stripe.checkout.Session:
+def create_setup_checkout(user: DjangoUserProtocol, rest: bool = False, **kwargs) -> stripe.checkout.Session:
     """
     Creates a new Stripe setup checkout session for this user, allowing them to add a new payment method for future use.
     Rest argument needed for consistency with create_subscription_checkout but there is no equivalent exception.
@@ -339,7 +340,7 @@ def modify_subscription(user, sub_id: str, set_as_default_payment_method: bool =
 
 
 @get_actual_user
-def list_customer_resource(user, obj_cls: Type, **kwargs) -> List[Dict[str, Any]]:
+def list_customer_resource(user: DjangoUserProtocol, obj_cls: Type, **kwargs) -> List[Dict[str, Any]]:
     """
     Generic method for listing on the given Stripe resource filtered by items owned by the user kwargs
     obj_cls could be stripe.Subscription, stripe.PaymentMethod, stripe.Invoice, etc.
@@ -361,7 +362,7 @@ def retrieve(user: DjangoUserProtocol, obj_cls: Type, obj_id: str):
 
 @get_actual_user
 @subscriptions.decorators.customer_id_required
-def delete(user, obj_cls: Any, obj_id: str) -> Dict[str, Any]:
+def delete(user, obj_cls: Type, obj_id: str) -> Dict[str, Any]:
     """
     Delete an object over Stripe API with given obj_id for obj_cls.
     obj_cls could be stripe.Subscription, stripe.PaymentMethod, stripe.Invoice, etc.
@@ -418,7 +419,7 @@ def is_subscribed(user, product_id: str = None) -> bool:
     return bool(is_subscribed_and_cancelled_time(user, product_id)['sub_id'])
 
 
-def get_subscription_cache() -> cache:
+def _get_subscription_cache() -> cache:
     """
     Return the cache to use to store subscription data. Default value is 'default'.
     """
@@ -433,7 +434,7 @@ def is_subscribed_with_cache(user, product_id: str = None) -> bool:
     This reduces the number of queries needed to the Stripe API.
     """
     product_id = product_id or settings.STRIPE_DEFAULT_SUBSCRIPTION_PRODUCT_ID
-    cache = get_subscription_cache()
+    cache = _get_subscription_cache()
     cache_key = f'is_subscribed_{user.id}_{product_id}'
     subscribed = cache.get(cache_key)
     if subscribed is None:

@@ -31,7 +31,7 @@ class Settings:
     @property
     def STRIPE_APP_DATA(self) -> Dict[str, Any]:
         """
-          Optional data to sent with Stripe API requests
+          Optional data to send with Stripe API requests
         """
         return getattr(django_settings, 'STRIPE_APP_DATA', {
             'name': app_name,
@@ -56,7 +56,7 @@ class Settings:
     @property
     def STRIPE_PAYMENT_METHOD_TYPES(self) -> List[str]:
         """
-        List of payment methods support by checkout sessions and Setup Intents.
+        List of payment methods supported by checkout sessions and Setup Intents.
         Available types are listed here:
         https://stripe.com/docs/api/payment_methods/object
         """
@@ -76,7 +76,6 @@ class Settings:
         Function signature is
 
         def additional_customer_parameters(user: User, **kwargs) -> Dict[str, Any]:
-            return {}
 
         """
         return getattr(django_settings, 'STRIPE_NEW_CUSTOMER_GET_KWARGS', return_empty_kwargs)
@@ -98,7 +97,7 @@ class Settings:
     @property
     def STRIPE_DEFAULT_SUBSCRIPTION_PRODUCT_ID(self) -> str:
         """
-        The default product_id for subscriptions. Uses in the django-stripe checkout.
+        The default product_id for subscriptions. Used to select prices for the django-stripe checkout.
         Can also be set wih an environment variable.
         """
         value = getattr(django_settings, 'STRIPE_DEFAULT_SUBSCRIPTION_PRODUCT_ID', None) or os.environ.get('STRIPE_DEFAULT_SUBSCRIPTION_PRODUCT_ID')

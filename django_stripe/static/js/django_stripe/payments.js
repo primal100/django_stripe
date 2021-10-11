@@ -337,6 +337,9 @@
   }
 
   function onPriceClick(event){
+    /*
+    Sets the correct price id when a price is selected. Also scrolls to the credit card input form.
+     */
     const priceElem = event.target;
     selectedPriceId = priceElem.id;
     document.querySelector('.total-price').textContent = getPriceText(priceElem);

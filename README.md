@@ -12,6 +12,11 @@ There are three ways to use ```django-stripe```:
 
 The library is built with a particular focus on Django users which are central to everything. For example, users are restricted from accessing private objects not belonging to them.
 
+The checkout looks like this:
+
+![Checkout Image here](docs/images/checkout.png?raw=true "Checkout")
+
+
 ## Getting Started
 
 To install:
@@ -76,6 +81,7 @@ Now, configure some settings in your web project settings.py file:
 3) In Stripe Dashboard create at least one subscription-based product and one price. In the price add the following metadata which will appear in the custom checkout: 
 
 - additional_info
+- more_additional_info
 - price_header
 
 Add your test api keys and product id to your app.
@@ -795,3 +801,324 @@ Vary: Accept
 ```
 
 ## Function Reference
+
+### Check User Subscription Status
+
+```python
+from django_stripe.payments import is_subscribed_and_cancelled_time, is_subscribed, is_subscribed_with_cache
+
+
+def is_subscribed_and_cancelled_time(user, product_id: str = None) -> SubscriptionInfoWithEvaluation:
+    """
+    Return first active subscription for a specific product to quickly check if a user is subscribed.
+    If the user object has attribute allowed_access_until, will check if set and valid.
+    """
+
+
+def is_subscribed(user, product_id: str = None) -> bool:
+    """
+    Return a single bool value to check if a user is subscribed to the given product.
+    If the user object has attribute allowed_access_until, will check if set and if set and valid return True.
+    """
+
+def is_subscribed_with_cache(user, product_id: str = None) -> bool:
+    """
+    Return first active subscription for a specific product to quickly check if a user is subscribed.
+    If the user object has attribute allowed_access_until, will check if set and valid.
+    Stores value in a cache for a a period of time set by settings.STRIPE_SUBSCRIPTION_CHECK_CACHE_TIMEOUT_SECONDS.
+    This reduces the number of queries needed to the Stripe API.
+    """
+```
+### Manage Customers
+
+For more information see https://stripe.com/docs/api/customers
+
+```python
+from django_stripe.payments import create_customer, modify_customer
+
+def create_customer(user: DjangoUserProtocol, **kwargs):
+    """
+    Creates a new customer over the stripe API using the user data. The customer id is saved to the user object.
+    The new_customer signal is sent.
+    The method is typically called automatically via the add_stripe_customer_if_not_existing decorator on most functions in the django_stripe.payments module.
+    """
+
+def modify_customer(user: DjangoUserProtocol, **kwargs) -> stripe.Customer:
+    """
+    Modifies a customer over the stripe API.
+    The customer_modified signal is sent.
+    """
+```
+
+### Create Stripe Checkout and Billing Portal Sessions
+
+These functions create Stripe Checkouts sessions.
+
+Use stripe.js to redirect to the given sessionId or url.
+
+See here for more info:
+https://stripe.com/docs/payments/checkout
+
+
+```python
+from django_stripe.payments import create_checkout, create_subscription_checkout, create_setup_checkout
+
+def create_checkout(user: DjangoUserProtocol, method: Callable, **kwargs) -> stripe.checkout.Session:
+    """
+    Creates a new Stripe checkout session for this user.
+    Recommended to call create_subscription_checkout or create_setup_checkout instead.
+    A checkout_created signal is sent.
+    """
+
+def create_subscription_checkout(user: DjangoUserProtocol, price_id: str, rest: bool = False,
+                                 **kwargs) -> stripe.checkout.Session:
+    """
+    Creates a new Stripe subscription checkout session for this user for the given price.
+    An exception will be raised if the price does not exist. If rest is True, this will be a Rest Framework exception.
+    A checkout_created signal is sent.
+    """
+
+def create_setup_checkout(user: DjangoUserProtocol, rest: bool = False, **kwargs) -> stripe.checkout.Session:
+    """
+    Creates a new Stripe setup checkout session for this user, allowing them to add a new payment method for future use.
+    Rest argument needed for consistency with create_subscription_checkout but there is no equivalent exception.
+    A checkout_created signal is sent.
+    """
+
+def create_billing_portal(user: DjangoUserProtocol) -> stripe.billing_portal.Session:
+    """
+    Creates a new Stripe Billing Portal session for this user.
+    A billing_portal_created signal is sent.
+    """
+```
+
+
+### View Products and Prices
+
+For more info see: https://stripe.com/docs/billing/prices-guide
+
+
+```python
+from django_stripe.payments import get_products, get_prices, retrieve_product, retrieve_price
+
+def get_products(user, ids: List[str] = None, price_kwargs: Dict[str, Any] = None, rest: bool = False,
+                 **kwargs) -> List[Dict[str, Any]]:
+    """
+    Get a list of products.
+    Ids a is list of product_ids to filter on.
+    If settings.STRIPE_ALLOW_DEFAULT_PRODUCT_ONLY is True and ids contains another product, then permission denied exception is raised.
+    If rest is True, this is a Rest Framework Exception.
+    """
+
+def get_prices(user, product: str = None, currency: str = None, rest: bool = False, **kwargs) -> List[Dict[str, Any]]:
+    """
+    Get a list of products.
+    Ids a is list of product_ids to filter on.
+    Currency allows to filter on currency.
+    If settings.STRIPE_ALLOW_DEFAULT_PRODUCT_ONLY is True, and product is another id, an exception is raised. If rest is True, this is a Rest Framework Exception.
+    """
+
+
+def retrieve_product(user, obj_id: str, price_kwargs: Optional[Dict[str, Any]] = None,
+                     rest: bool = False) -> Dict[str, Any]:
+    """
+    Retrieve a single product with prices and subscription information included in the result.
+    price_kwargs is a list of filters provided to stripe.Price.list
+    """
+
+def retrieve_price(user, obj_id: str, rest: bool = False) -> Dict[str, Any]:
+    """
+    Retrieve a single price with subscription info
+    """
+```
+
+
+### Creating Setup Intents
+
+Setup Intents are the first step to creating a paying method which can later be used for paying for subscriptions.
+
+For more information see:
+https://stripe.com/docs/api/setup_intents
+
+```python
+from django_stripe.payments import create_setup_intent
+
+def create_setup_intent(user, **kwargs) -> stripe.SetupIntent:
+    """
+    Create a setup intent, the first step in adding a payment method which can later be used for paying subscriptions.
+    price_kwargs is a list of filters provided to stripe.SetupIntent.create
+    Generates a setup_intent_created signal
+    """
+```
+
+
+### Managing Payment Methods
+
+For more info on Payment Methods in Stripe see: https://stripe.com/docs/payments/payment-methods
+
+```python
+from django_stripe.payments import list_payment_methods, detach_payment_method, detach_all_payment_methods, modify_payment_method
+
+def list_payment_methods(user, types: List[PaymentMethodType] = None, **kwargs) -> Generator[stripe.PaymentMethod, None, None]:
+    """
+    Returns a generator which contains all payment methods for the user.
+    Stripe only allows to retrieve payment methods for a single type at a time.
+    This functions gathers payment methods from multiple types by making parallel requests to the Stripe API.
+    kwargs is additional filters to pass to stripe.PaymentMethod.list
+    """
+
+def detach_payment_method(user, pm_id: str) -> stripe.PaymentMethod:
+    """
+    Detach a user's payment method.
+    It is needed to retrieve the payment method first to check the customer id.
+    If a customer attempts to detach an object belonging to another customer, StripeWrongCustomer exception is raised.
+    The payment_method_detached signal is sent.
+    """
+
+
+def detach_all_payment_methods(user, types: List[PaymentMethodType] = None, **kwargs) -> List[stripe.PaymentMethod]:
+    """
+    Detach all of a user's payment methods of the given types.
+    The payment_method_detached signal is sent.
+    """
+
+def modify_payment_method(user: DjangoUserProtocol, obj_id: str, set_as_default: bool = False, **kwargs) -> stripe.PaymentMethod:
+    """
+    Modifies a payment method over the stripe API using the user data.
+    If set_as_default is True, the payment method is set as the default for this customer.
+    The modified customer is returned.
+    The customer_modified signal is sent.
+    A StripeWrongCustomer exception is raised if a customer attempts to access a payment method belonging to another customer.
+    """
+```
+
+### Manage Subscriptions
+
+For more info see: https://stripe.com/docs/api/subscriptions
+
+```python
+from django_stripe.payments import create_subscription, modify_subscription, cancel_subscription, cancel_subscription_for_product
+
+def create_subscription(user, price_id: str, set_as_default_payment_method: bool = False, **kwargs) -> stripe.Subscription:
+    """
+    Create a new subscription for the given user and price_id. A payment method must already be created.
+    If set_as_default_payment_method is true, the given payment method will be set as the default for this customer.
+    kwargs is a list of parameters to provide to stripe.Subscription.create in the Stripe API.
+    The signal subscription_created is sent.
+    """
+    
+def modify_subscription(user, sub_id: str, set_as_default_payment_method: bool = False, **kwargs) -> stripe.Subscription:
+    """
+    Modify a user's subscription
+    kwargs is the parameters to modify.
+    If payment_method is given in kwargs and set_as_default_payment_method is true, the default payment method is changed to that payment method for all subscriptions.
+    Raises StripeWrongCustomer is a user tries to modify a subscription belonging to another customer.
+    The signal subscription_modified is sent.
+    """
+    
+    
+def cancel_subscription(user, subscription_id: str) -> stripe.Subscription:
+    """
+    Allow a user to cancel their subscription.
+    If a user attempts to cancel a subscription belonging to another customer, StripeWrongCustomer will be raised.
+    """
+    
+def cancel_subscription_for_product(user, product_id: str) -> bool:
+    """
+    Allow a user to cancel their subscription by the id of the product they are subscribed to, if such a subscription exists.
+    Returns True if the subscription exists for that user, otherwise False.
+    """
+```
+
+
+### Generic Functions for Interacting with the Stripe API
+
+These functions mirror the retrieve, delete and modify methods of Stripe resources, but also check that the user owns the requested object. An exception will be raised otherwise. 
+
+
+```python
+from django_stripe.payments import list_customer_resource, retrieve, delete, modify
+
+def list_customer_resource(user: DjangoUserProtocol, obj_cls: Type, **kwargs) -> List[Dict[str, Any]]:
+    """
+    Generic method for listing on the given Stripe resource filtered by items owned by the user kwargs
+    obj_cls could be stripe.Subscription, stripe.PaymentMethod, stripe.Invoice, etc.
+    """
+
+def retrieve(user: DjangoUserProtocol, obj_cls: Type, obj_id: str):
+    """
+    Retrieve an object over Stripe API for the given obj_id and obj_cls.
+    obj_cls could be stripe.Subscription, stripe.PaymentMethod, stripe.Invoice, etc.
+    If a customer attempts to retrieve an object belonging to another customer, StripeWrongCustomer exception is raised.
+    """
+
+def delete(user, obj_cls: Type, obj_id: str) -> Dict[str, Any]:
+    """
+    Delete an object over Stripe API with given obj_id for obj_cls.
+    obj_cls could be stripe.Subscription, stripe.PaymentMethod, stripe.Invoice, etc.
+    It is needed to retrieve the obj first to check the customer id.
+    If a customer attempts to delete an object belonging to another customer, StripeWrongCustomer exception is raised.
+    An appropriate signal is sent for the given resource deletion.
+    """
+
+def modify(user: DjangoUserProtocol, obj_cls: Type, obj_id: str, **kwargs: Dict[str, Any]):
+    """
+    Modify an object over Stripe API with given obj_id for obj_cls.
+    obj_cls could be stripe.Subscription, stripe.PaymentMethod, stripe.Invoice, etc.
+    It is needed to retrieve the obj first to check the customer id.
+    If a customer attempts to modify an object belonging to another customer, StripeWrongCustomer exception is raised.
+    kwargs are the parameters to be modified.
+    An appropriate signal is sent for the given resource modification.
+    """
+```
+
+## Settings
+
+The following settings can be configured in settings.py or where mentioned, as an environment variable.
+
+- ```STRIPE_SECRET_KEY: str```: The Stripe Secret Key as shown in the Stripe Dashboard. Environment variable recommended for production.
+
+- ```STRIPE_PUBLISHABLE_KEY: str```: The Stripe Publishable Key as shown in the Stripe Dashboard. Can also be set wih an environment variable.
+
+- ```STRIPE_APP_DATA: str```: Optional data to send with Stripe API requests
+
+- ```STRIPE_CHECKOUT_SUCCESS_URL: str```: URL to redirect to after Stripe Checkout is completed
+- 
+- ```STRIPE_CHECKOUT_CANCEL_URL: str```: URL to redirect to if a Stripe Checkout is cancelled
+
+- ```STRIPE_PAYMENT_METHOD_TYPES: str```: List of payment methods supported by checkout sessions and Setup Intents.
+
+- ```STRIPE_KEEP_CUSTOMER_DETAILS_UPDATED: str```: When a user's name or email is changed, whether the value is also updated for the customer over the Stripe API
+
+- ```STRIPE_NEW_CUSTOMER_GET_KWARGS: str```: A function which provides additional parameters to the Stripe API when creating a customer. 
+
+
+The function signature is:
+
+```python
+        def additional_customer_parameters(user: User, **kwargs) -> Dict[str, Any]:
+``````
+
+- ```STRIPE_BILLING_PORTAL_RETURN_URL: str```: The URL to return users to after they complete a Stripe Billing Portal Session.
+
+- ```STRIPE_FREE_ACCESS_PRICE_ID: str```: If a user has been given free access, this is the price_id they are being given free access to which will be returned in the responses.
+
+- ```STRIPE_DEFAULT_SUBSCRIPTION_PRODUCT_ID: str```: The default product_id for subscriptions. Used to select prices for the django-stripe checkout. Can also be set wih an environment variable.
+
+- ```STRIPE_ALLOW_DEFAULT_PRODUCT_ONLY: str```: If set to True, users will be restricting from accessing any product_id other than the default one.
+
+- ```STRIPE_CREDIT_CARD_HIDE_POSTAL_CODE: str```: Whether to show the Postal Code field in Stripe Elements in the django_stripe checkout.
+
+- ```STRIPE_CHECKOUT_TITLE: str```:  Title of the django_stripe checkout page.
+
+- ```STRIPE_CHECKOUT_DEV_MODE: str```: Show additional information such as test credit card numbers in the django_stripe checkout page. This will be overridden as False if test does not appear in the Stripe Publishable key so it is safe to always leave this as True.
+
+- ```STRIPE_CHECKOUT_DEFAULT_COUNTRY: str```: The default country to set the Billing Details form to in the django_stripe checkout page.
+
+- ```COUNTRY_HEADER: str```:  If a two-letter country code exists as a header in the request, set the header name here and the value of the header will be used as the default country in the django-stripe checkout page. For example, if requests pass through Cloudflare, set this value to ```'HTTP_CF_IPCOUNTRY'```. If this header is available, it takes priority, otherwise ```STRIPE_CHECKOUT_DEFAULT_COUNTRY``` is used.
+
+- ```STRIPE_SUBSCRIPTION_CACHE_NAME: str```: Caching can be used when checking if a user is subscribed. This is the cache name to use for storing subscriptions.
+
+- ```STRIPE_SUBSCRIPTION_CHECK_CACHE_TIMEOUT_SECONDS: str```:  How long to store keys in the Stripe Subscription Cache.
+
+
