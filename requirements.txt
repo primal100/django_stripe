@@ -3,5 +3,4 @@ django
 djangorestframework
 stripe
 inflect
-pycountry
 stripe-subscriptions
