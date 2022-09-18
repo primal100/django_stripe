@@ -22,10 +22,10 @@ from django_stripe.views import (
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include("django_stripe.urls")),
-    re_path(r'^api-auth/', include('rest_framework.urls')),
+    path('api-auth/', include('rest_framework.urls')),
     re_path('^checkout/(?P<price_id>.*)/', GoToCheckoutView.as_view(), name='go-to-checkout'),
     re_path(r'^setup-checkout/(?:/(?P<subscription_id>.*)/)?', GoToSetupCheckoutView.as_view(), name='go-to-setup-checkout'),
-    re_path(r'^billing-portal/', GoToBillingPortalView.as_view(), name='go-to-billing-portal'),
+    path('^billing-portal/', GoToBillingPortalView.as_view(), name='go-to-billing-portal'),
     path(r'subscriptions/', SubscriptionHistoryView.as_view(), name='subscription-history'),
     path(r'', SubscriptionPortalView.as_view(), name='subscription-portal'),
 
