@@ -700,7 +700,8 @@ def non_existing_payment_method_error_other_user(default_payment_method_id) -> D
 
 @pytest.fixture
 def no_default_payment_method_error() -> Dict[str, str]:
-    return {'detail': 'This customer has no attached payment source or default payment method.'}
+    return {'detail':
+                "This customer has no attached payment source or default payment method. Please consider adding a default payment method. For more information, visit https://stripe.com/docs/billing/subscriptions/payment-methods-setting#payment-method-priority."}
 
 
 @pytest.fixture

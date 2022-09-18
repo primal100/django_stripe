@@ -1123,3 +1123,32 @@ The function signature is:
 - ```STRIPE_SUBSCRIPTION_CHECK_CACHE_TIMEOUT_SECONDS: str```:  How long to store keys in the Stripe Subscription Cache.
 
 
+## Running tests
+
+The test suite uses pytest. The tests interact with the Stripe test api so first sign up to Stripe and make sure to have test api keys available. The tests can be run with either command line paramaters:
+
+```shell
+python -m pytest --apikey sk_test... --publickey pk_test... tests
+```
+
+Or using environment variables for example in Linux bash shell:
+
+```shell
+export STRIPE_TEST_SECRET_KEY=sk_test...
+export STRIPE_TEST_PUBLIC_KEY=pk_test...
+python -m pytest tests
+```
+
+Or in Windows Powershell:
+
+```shell
+$Env:STRIPE_TEST_SECRET_KEY = "sk_test..."
+$Env:STRIPE_TEST_PUBLIC_KEY = "pk_test..."
+python -m pytest tests
+```
+
+The Selenium end to end tests are not run by default. To run these tests setup a driver in the correct path and run pytest with the driver argument:
+
+```shell
+python -m pytest tests/test_selenium.py --driver chrome
+```
