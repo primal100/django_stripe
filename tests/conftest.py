@@ -136,7 +136,11 @@ def restrict_products(settings, set_default_product_id):
 def create_customer_id(user):
     customers = stripe.Customer.list(email=user.email)
     for customer in customers:
-        stripe.Customer.delete(customer['id'])
+        try:
+            stripe.Customer.delete(customer['id'])
+        except stripe.error.InvalidRequestError:
+            # Error occurs sometimes in Github Actions that customer id doesn't exist even thought it was just returned, perhaps fixture cleanups are being run in parallel.
+            pass
     payments.create_customer(user)
     return user
 
