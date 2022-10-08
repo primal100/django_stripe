@@ -4,7 +4,6 @@ import os
 
 import sys
 import pytest
-import pytz
 from pytest_django.live_server_helper import LiveServer
 import stripe
 from stripe.error import InvalidRequestError
@@ -107,7 +106,7 @@ def user(user_email):
 
 @pytest.fixture
 def user_allowed_access_until(user):
-    user.allowed_access_until = datetime.datetime(2030, 12, 30, 23, 59, 59, tzinfo=pytz.utc)
+    user.allowed_access_until = datetime.datetime(2030, 12, 30, 23, 59, 59, tzinfo=datetime.timezone.utc)
     user.save()
     yield user
 
