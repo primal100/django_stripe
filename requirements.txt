@@ -1,6 +1,2 @@
-wheel
-django
-djangorestframework
-stripe
-inflect
-stripe-subscriptions
+# Runtime dependencies are declared in pyproject.toml.
+-e .

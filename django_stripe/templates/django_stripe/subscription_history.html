@@ -9,9 +9,11 @@
     {% block subscription %}
        <h2>Subscription Status</h2>
        {% if subscription %}
-           <div class="pricing-option" data-currency="{{ subscription.plan.currency }}" data-unit_amount="{{ subscription.plan.amount }}" data-interval="{{ subscription.plan.interval }}">
-               <span>Your subscription for <span class="price-number">{{ subscription.plan.currency }} {{ subscription.plan.amount }} / {{ subscription.plan.interval }}</span> is currently in {{ subscription.status }} status.</span>
+           {% for item in subscription.items.data %}
+           <div class="pricing-option" data-currency="{{ item.price.currency }}" data-unit_amount="{{ item.price.unit_amount }}" data-interval="{{ item.price.recurring.interval }}">
+               <span>Your subscription for <span class="price-number">{{ item.price.currency }} {{ item.price.unit_amount }} / {{ item.price.recurring.interval }}</span> is currently in {{ subscription.status }} status.</span>
             </div>
+           {% endfor %}
        {% else %}
            You currently do not have any active subscriptions. Click <a href="{{ header_link }}">here</a> for subscription options.
        {% endif %}

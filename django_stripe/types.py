@@ -1,4 +1,5 @@
-from subscriptions.types import Protocol, UserProtocol, ProductIsSubscribed
+from typing import Protocol
+from subscriptions.types import UserProtocol, ProductIsSubscribed
 
 
 class DjangoUserProtocol(UserProtocol, Protocol):

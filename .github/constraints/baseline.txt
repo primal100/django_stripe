@@ -1,0 +1,3 @@
+# Reproducible Stripe compatibility baseline; runtime bounds live in pyproject.toml.
+stripe==16.1.0
+stripe-subscriptions==0.6.0

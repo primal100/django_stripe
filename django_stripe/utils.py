@@ -38,3 +38,44 @@ def user_description(user) -> str:
     The description sent to Stripe when a customer is created or modified
     """
     return f'{user.first_name} {user.last_name}'
+
+
+def normalize_payment_method_kwargs(kwargs):
+    """Translate the legacy spelling to the supported Stripe parameter."""
+    kwargs = dict(kwargs)
+    if 'payment_method_types' in kwargs:
+        if 'allowed_payment_method_types' in kwargs:
+            raise TypeError('Pass either payment_method_types or allowed_payment_method_types, not both.')
+        kwargs['allowed_payment_method_types'] = kwargs.pop('payment_method_types')
+    return kwargs
+
+
+def resource_dict(value):
+    """Normalize SDK objects before dictionary operations or JSON rendering."""
+    import stripe
+    if isinstance(value, stripe.StripeObject):
+        return value.to_dict(for_json=True)
+    if isinstance(value, dict):
+        return {key: resource_dict(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [resource_dict(item) for item in value]
+    return value
+
+
+def subscription_details(resource):
+    """Keep legacy fields for single-item subscriptions without conflating item periods."""
+    sub = resource_dict(resource).copy()
+    items = (sub.get('items') or {}).get('data', [])
+    if len(items) == 1:
+        item = items[0]
+        price = item.get('price') or item.get('plan') or {}
+        sub['plan'] = dict(item.get('plan') or price)
+        product = sub['plan'].get('product')
+        if isinstance(product, dict):
+            sub['plan']['product'] = product['id']
+        for field in ('current_period_start', 'current_period_end'):
+            sub[field] = item.get(field)
+    elif len(items) > 1 or not sub.get('plan'):
+        sub['plan'] = {'id': None, 'product': None}
+        sub['current_period_start'] = sub['current_period_end'] = None
+    return sub

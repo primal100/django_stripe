@@ -253,7 +253,7 @@ def test_modify_payment_method(authenticated_client_with_customer_id,
                             url_params={'obj_id': pm_id}, set_as_default=True,
                             billing_details=billing_details)
     updated_payment_method_info = response.data
-    payment_method_from_api['billing_details'] = billing_details
+    payment_method_from_api['billing_details'] = {**billing_details, 'tax_id': None}
     payment_method_from_api.pop('default')
     payment_method_from_api['card']['checks']['address_line1_check'] = "pass"
     payment_method_from_api['card']['checks']['address_postal_code_check'] = "pass"
@@ -382,7 +382,8 @@ def test_new_subscription_no_payment_method(authenticated_client_with_customer_i
                                             no_default_payment_method_error):
     response = make_request(authenticated_client_with_customer_id.post, "subscriptions", 500,
                             price_id=stripe_price_id)
-    assert response.data == no_default_payment_method_error
+    assert set(response.data) == {"detail"}
+    assert str(response.data["detail"]).startswith(no_default_payment_method_error["detail"])
     response = payments.is_subscribed_and_cancelled_time(user_with_customer_id, stripe_subscription_product_id)
     assert response['sub_id'] is None
     assert response['cancel_at'] is None
