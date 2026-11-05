@@ -62,6 +62,16 @@ Start with an empty `dist` directory. The build creates a source distribution
 and then builds the wheel from it. The archive check verifies that all package
 code, templates, and static assets are present in both archives.
 
+On Windows, `publish.ps1` automates the same build and validation. Install its
+tools with `python -m pip install -e ".[release]"`, then run
+`./publish.ps1` for a dry run. To upload to PyPI, run
+`./publish.ps1 -Publish`; PowerShell asks for confirmation before Twine uploads
+the validated wheel and source archive. Use
+`./publish.ps1 -Publish -Repository testpypi` to upload to TestPyPI instead.
+Twine accepts PyPI API tokens through its standard credential settings; for
+example, set `TWINE_USERNAME=__token__` and `TWINE_PASSWORD` to the token in
+your PowerShell session. Never put a token in the script or commit it.
+
 CI installs the wheel in a fresh environment and runs the smoke check and
 offline tests outside the checkout, so editable imports cannot hide missing
 files. The baseline pins Stripe 16.1.0 and stripe-subscriptions 0.6.0 in

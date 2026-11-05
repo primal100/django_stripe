@@ -34,6 +34,7 @@ Source = "https://github.com/primal100/django_stripe"
 
 [project.optional-dependencies]
 test = ["pytest", "pytest-django", "pytest-selenium", "django-selenium-login"]
+release = ["build", "twine"]
 
 [tool.setuptools.dynamic]
 version = {attr = "django_stripe.__version__"}
