@@ -6,13 +6,14 @@ import sys
 import pytest
 from pytest_django.live_server_helper import LiveServer
 import stripe
-from stripe.error import InvalidRequestError
+from stripe import InvalidRequestError
 from unittest import mock
 
 from urllib.parse import urljoin
 from django.dispatch import Signal
 from django.core.cache import cache
 from django_stripe import payments, signals
+from django_stripe.utils import resource_dict
 from django_stripe.tests import signal_mock, get_url
 from seleniumlogin import force_login
 import subscriptions
@@ -138,7 +139,7 @@ def create_customer_id(user):
     for customer in customers:
         try:
             stripe.Customer.delete(customer['id'])
-        except stripe.error.InvalidRequestError:
+        except stripe.InvalidRequestError:
             # Error occurs sometimes in Github Actions that customer id doesn't exist even thought it was just returned, perhaps fixture cleanups are being run in parallel.
             pass
     payments.create_customer(user)
@@ -261,10 +262,11 @@ def payment_method_saved(user_with_customer_id, payment_method) -> stripe.Paymen
     return payment_method
 
 
-payment_method_api_keys = ["billing_details", "card", "created", "id", "type"]
+payment_method_api_keys = ["allow_redisplay", "billing_details", "card", "created", "id", "type"]
 
 
 def get_payment_method_from_api(payment_method: stripe.PaymentMethod, default: bool) -> Dict[str, Any]:
+    payment_method = resource_dict(payment_method)
     pm = {k: payment_method[k] for k in payment_method_api_keys}
     pm["default"] = default
     return pm
@@ -355,9 +357,11 @@ def subscribed_product_name() -> str:
 
 
 @pytest.fixture(autouse=True, scope="session")
-def stripe_subscription_product_id(stripe_subscription_product_url, subscribed_product_name) -> str:
+def stripe_subscription_product_id(stripe_subscription_product_url, subscribed_product_name, stripe_api_key) -> str:
+    if not stripe.api_key:
+        pytest.skip('Stripe integration tests require --apikey or STRIPE_TEST_SECRET_KEY')
     products = stripe.Product.list(url=stripe_subscription_product_url, active=True, limit=1)
-    if products:
+    if products.data:
         product = products['data'][0]
     else:
         product = stripe.Product.create(name=subscribed_product_name, url=stripe_subscription_product_url)
@@ -377,7 +381,7 @@ def unsubscribed_product_name() -> str:
 @pytest.fixture(scope="session")
 def stripe_unsubscribed_product_id(unsubscribed_product_name, stripe_unsubscribed_product_url) -> str:
     products = stripe.Product.list(url=stripe_unsubscribed_product_url, active=True, limit=1)
-    if products:
+    if products.data:
         product = products['data'][0]
     else:
         product = stripe.Product.create(name=unsubscribed_product_name, url=stripe_unsubscribed_product_url)
@@ -387,7 +391,7 @@ def stripe_unsubscribed_product_id(unsubscribed_product_name, stripe_unsubscribe
 @pytest.fixture(scope="session")
 def stripe_price_id(stripe_subscription_product_id, stripe_price_currency) -> str:
     prices = stripe.Price.list(product=stripe_subscription_product_id, active=True, limit=1)
-    if prices:
+    if prices.data:
         price = prices.data[0]
     else:
         price = stripe.Price.create(
@@ -402,7 +406,7 @@ def stripe_price_id(stripe_subscription_product_id, stripe_price_currency) -> st
 @pytest.fixture(scope="session")
 def stripe_unsubscribed_price_id(stripe_unsubscribed_product_id, stripe_price_currency) -> str:
     prices = stripe.Price.list(product=stripe_unsubscribed_product_id, active=True, limit=1)
-    if prices:
+    if prices.data:
         price = prices.data[0]
     else:
         price = stripe.Price.create(
@@ -416,7 +420,7 @@ def stripe_unsubscribed_price_id(stripe_unsubscribed_product_id, stripe_price_cu
 
 @pytest.fixture
 def subscription_current_period_end(subscription) -> int:
-    return subscription.current_period_end
+    return subscription['items']['data'][0]['current_period_end']
 
 
 @pytest.fixture
@@ -430,9 +434,9 @@ def expected_subscription_prices(stripe_subscription_product_id, stripe_price_id
     return [
         {'id': stripe_price_id,
          'recurring': {
-              "aggregate_usage": None,
               "interval": "month",
               "interval_count": 1,
+              "meter": None,
               "trial_period_days": None,
               "usage_type": "licensed",
          },
@@ -453,9 +457,9 @@ def expected_subscription_prices_unsubscribed(stripe_subscription_product_id, st
     return [
         {'id': stripe_price_id,
          'recurring': {
-              "aggregate_usage": None,
               "interval": "month",
               "interval_count": 1,
+              "meter": None,
               "trial_period_days": None,
               "usage_type": "licensed",
          },
@@ -485,9 +489,10 @@ def expected_subscription_products_and_prices(stripe_subscription_product_id, st
                   'id': stripe_unsubscribed_price_id,
                   'metadata': {},
                   'nickname': None,
-                  'recurring': {'aggregate_usage': None,
+                  'recurring': {
                                 'interval': 'year',
                                 'interval_count': 1,
+                                'meter': None,
                                 'trial_period_days': None,
                                 'usage_type': 'licensed'},
                   'subscription_info': {'cancel_at': None, 'current_period_end': None, 'sub_id': None},
@@ -509,9 +514,9 @@ def expected_subscription_products_and_prices(stripe_subscription_product_id, st
          'metadata': {},
          'prices': [{'id': stripe_price_id,
                      'recurring': {
-                      "aggregate_usage": None,
                       "interval": "month",
                       "interval_count": 1,
+                      "meter": None,
                       "trial_period_days": None,
                       "usage_type": "licensed"
                     },
@@ -561,9 +566,10 @@ def expected_subscription_products_and_prices_unsubscribed(stripe_subscription_p
                   'id': stripe_unsubscribed_price_id,
                   'metadata': {},
                   'nickname': None,
-                  'recurring': {'aggregate_usage': None,
+                  'recurring': {
                                 'interval': 'year',
                                 'interval_count': 1,
+                                'meter': None,
                                 'trial_period_days': None,
                                 'usage_type': 'licensed'},
                   'subscription_info': {'cancel_at': None, 'current_period_end': None, 'sub_id': None},
@@ -585,9 +591,9 @@ def expected_subscription_products_and_prices_unsubscribed(stripe_subscription_p
          'metadata': {},
          'prices': [{'id': stripe_price_id,
                      'recurring': {
-                      "aggregate_usage": None,
                       "interval": "month",
                       "interval_count": 1,
+                      "meter": None,
                       "trial_period_days": None,
                       "usage_type": "licensed"
                     },
@@ -704,7 +710,7 @@ def non_existing_payment_method_error_other_user(default_payment_method_id) -> D
 @pytest.fixture
 def no_default_payment_method_error() -> Dict[str, str]:
     return {'detail':
-                "This customer has no attached payment source or default payment method. Please consider adding a default payment method. For more information, visit https://stripe.com/docs/billing/subscriptions/payment-methods-setting#payment-method-priority."}
+                "This customer has no attached payment source or default payment method. Please consider adding a default payment method."}
 
 
 @pytest.fixture

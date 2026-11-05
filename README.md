@@ -18,6 +18,64 @@ Here's an example of how the self-hosted checkout may look. The prices text can 
 
 At least for now, there are no webhooks used and no additional models. Anytime Stripe data is needed it is requested from the Stripe API. Caching is implemented in some cases to reduce the number of requests.
 
+## Compatibility and testing
+
+Requires Python 3.11+, Stripe Python SDK `>=16.1,<17`, and
+`stripe-subscriptions>=0.6,<0.7`.
+
+The subscription API preserves its existing flat response for single-item
+subscriptions, reading billing periods from that item. For multiple items,
+`price`, `product`, `current_period_start`, and `current_period_end` are null;
+an additional `items` list contains each item's ID, price, product, and periods.
+The subscription history page displays each item's price.
+
+Checkout and SetupIntent helpers send `allowed_payment_method_types` to Stripe.
+`STRIPE_PAYMENT_METHOD_TYPES` still supplies the default. Callers can override it
+with `allowed_payment_method_types`; the old `payment_method_types` keyword is
+translated for compatibility. Supplying both keywords raises `TypeError`.
+
+Run offline SDK regression tests with `python -m pytest tests/unit`.
+Run the integration suite with `python -m pytest tests` after setting
+`STRIPE_TEST_SECRET_KEY` and `STRIPE_TEST_PUBLIC_KEY` to test-mode credentials.
+Integration tests create and clean up Stripe test resources; without a secret
+key they are explicitly skipped. Browser tests additionally require `--driver`.
+
+## Development, packaging, and CI
+
+Package metadata, runtime dependencies, and the `test` extra are declared in
+`pyproject.toml`. The version is read from `django_stripe.__version__`.
+Install a development checkout with `python -m pip install -e ".[test]"`;
+`requirements.txt` and `requirements_tests.txt` are convenience wrappers.
+Supported Django versions are 5.2 through 6.1, with compatible Python versions
+selected explicitly in CI.
+
+Build and validate a release with:
+
+```shell
+python -m pip install build twine
+python -m build
+python -m twine check --strict dist/*
+python scripts/check_distribution.py
+```
+
+Start with an empty `dist` directory. The build creates a source distribution
+and then builds the wheel from it. The archive check verifies that all package
+code, templates, and static assets are present in both archives.
+
+CI installs the wheel in a fresh environment and runs the smoke check and
+offline tests outside the checkout, so editable imports cannot hide missing
+files. The baseline pins Stripe 16.1.0 and stripe-subscriptions 0.6.0 in
+`.github/constraints/baseline.txt`; a separate job exercises the latest allowed
+dependencies. Python 3.15 is covered in CI; add its release classifier after
+that job has passed.
+
+Live Stripe tests run after the offline jobs on pushes to `master` and manual
+workflow dispatches. They use `STRIPE_TEST_SECRET_KEY` and
+`STRIPE_TEST_PUBLIC_KEY` repository secrets through environment variables,
+report a skip when either is absent, and reject non-test credentials. Live
+jobs are serialized to avoid concurrent test-customer cleanup. Browser tests
+remain opt-in and require a configured Selenium driver.
+
 ## Getting Started
 
 To install:

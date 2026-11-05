@@ -3,3 +3,6 @@ stripe-subscriptions/*
 *.sqlite3
 *.coverage
 *.pyc
+build/
+dist/
+*.egg-info/

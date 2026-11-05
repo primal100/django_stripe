@@ -11,7 +11,7 @@ from rest_framework.views import APIView
 from .conf import settings
 from . import serializers
 from . import payments
-from .utils import get_user_if_token_user
+from .utils import get_user_if_token_user, resource_dict, subscription_details
 from .logging import logger
 from .view_mixins import StripeListMixin, StripeCreateMixin, StripeCreateWithSerializerMixin, StripeModifyMixin, StripeDeleteMixin
 from typing import Dict, Any, List, Iterable, Optional
@@ -46,7 +46,7 @@ class StripeBillingPortalView(APIView, StripeCreateMixin):
     permission_classes = (IsAuthenticated,)
     response_keys: tuple = ("url",)
 
-    def create(self, request: Request, **kwargs) -> stripe.billing_portal.session:
+    def create(self, request: Request, **kwargs) -> stripe.billing_portal.Session:
         return payments.create_billing_portal(request.user, **kwargs)
 
 
@@ -110,6 +110,12 @@ class StripeInvoiceView(APIView, StripeListMixin):
     response_keys = ('id', "amount_due", "amount_paid", "amount_remaining", "billing_reason",
                      "created", "hosted_invoice_url", "invoice_pdf", "next_payment_attempt", "status", "subscription")
 
+    def make_response(self, item):
+        item = resource_dict(item).copy()
+        if 'subscription' not in item:
+            item['subscription'] = ((item.get('parent') or {}).get('subscription_details') or {}).get('subscription')
+        return super().make_response(item)
+
     @property
     def name_in_errors(self) -> str:
         return self.stripe_resource.__name__.lower()
@@ -127,7 +133,8 @@ class StripePaymentMethodView(APIView, StripeListMixin, StripeModifyMixin, Strip
     modify_serializer_class = serializers.PaymentMethodModifySerializer
     status_code = status.HTTP_200_OK
     permission_classes = (IsAuthenticated,)
-    response_keys_exclude = ('customer', 'livemode', 'metadata', 'object')
+    response_keys_exclude = ('customer', 'customer_account', 'shared_payment_granted_token',
+                             'livemode', 'metadata', 'object')
     order_by = ('default', 'created', 'id')
 
     def list(self, request: Request, **data) -> Iterable[stripe.PaymentMethod]:
@@ -166,6 +173,26 @@ class StripeSubscriptionView(APIView, StripeListMixin, StripeCreateWithSerialize
     response_keys = ('id', 'created', 'plan__product', 'plan__id', 'cancel_at', 'current_period_end',
                      'current_period_start', 'days_until_due', 'default_payment_method', 'latest_invoice',
                      'start_date', 'status', 'trial_end', 'trial_start')
+
+    def make_response(self, item):
+        item = subscription_details(item)
+        response = super().make_response(item)
+        items = (item.get('items') or {}).get('data', [])
+        if len(items) > 1:
+            response['items'] = [
+                {'id': entry['id'],
+                 'price': (entry.get('price') or entry.get('plan') or {}).get('id'),
+                 'product': (entry.get('price') or entry.get('plan') or {}).get('product'),
+                 'current_period_start': entry.get('current_period_start'),
+                 'current_period_end': entry.get('current_period_end')}
+                for entry in items
+            ]
+        return response
+
+    def list(self, request, **kwargs):
+        if 'price_id' in kwargs:
+            kwargs['price'] = kwargs.pop('price_id')
+        return super().list(request, **kwargs)
 
     @property
     def name_in_errors(self) -> str:
@@ -290,7 +317,7 @@ class SubscriptionHistoryView(BaseCheckoutView):
         user = get_user_if_token_user(self.request.user)
         product_id = self.get_product_id()
         logger.debug("Opening subscription history portal for user %d, product %s", user.id, product_id)
-        subscriptions = payments.list_customer_resource(user, stripe.Subscription)
+        subscriptions = [subscription_details(sub) for sub in payments.list_customer_resource(user, stripe.Subscription)]
         context['subscription'] = None
         for status in payments.subscription_alive_statuses:
             relevant_subscriptions = sorted(filter(lambda s: s['status'] == status, subscriptions), key= lambda s: s['created'], reverse=True)
@@ -305,8 +332,9 @@ class SubscriptionHistoryView(BaseCheckoutView):
         context['invoices'] = payments.list_customer_resource(user, stripe.Invoice)
         context['header_link'] = reverse("subscription-portal")
         context['header_link_text'] = "Subscription Portal"
-        context['subscription']['current_period_end'] = self.timestamp_format(context['subscription']['current_period_end'])
-        context['subscription']['cancel_at'] = self.timestamp_format(context['subscription']['cancel_at'])
+        if context['subscription']:
+            context['subscription']['current_period_end'] = self.timestamp_format(context['subscription']['current_period_end'])
+            context['subscription']['cancel_at'] = self.timestamp_format(context['subscription']['cancel_at'])
         context['dev_mode'] = settings.STRIPE_CHECKOUT_DEV_MODE and 'test' in settings.STRIPE_PUBLISHABLE_KEY
         context['title'] = settings.STRIPE_CHECKOUT_TITLE
         return context

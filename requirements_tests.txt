@@ -1,4 +1,2 @@
-pytest
-pytest-django
-pytest-selenium
-django-selenium-login
+# Install the project and its test extra for local development.
+-e .[test]

@@ -4,14 +4,15 @@ import logging
 from operator import itemgetter
 
 import subscriptions.exceptions
-from stripe.error import StripeError
+from stripe import StripeError
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 from django_stripe import payments, exceptions
 from .logging import logger
-from subscriptions.types import Protocol
+from .utils import resource_dict
+from typing import Protocol
 from typing import Dict, Any, Callable, List, Type, Union, Iterable, Optional
 
 
@@ -49,6 +50,7 @@ class StripeViewMixin(Protocol):
         """
         Filter which keys are returned in the response.
         """
+        item = resource_dict(item)
         if self.response_keys_exclude:
             return {k: item[k] for k in item.keys() if k not in self.response_keys_exclude}
         if self.response_keys:
@@ -63,7 +65,7 @@ class StripeViewMixin(Protocol):
         method = method or self.make_request
         try:
             return method(request, **data)
-        except stripe.error.StripeError as e:
+        except stripe.StripeError as e:
             logger.exception(e, exc_info=e)
             raise exceptions.StripeException(detail=e)
 
@@ -109,7 +111,7 @@ class StripeViewWithSerializerMixin(StripeViewMixin, Protocol):
         if not serializer:
             result = self.run_stripe(request, method=method, **kwargs)
         elif serializer.is_valid():
-            data = serializer.data
+            data = serializer.validated_data
             result = self.run_stripe(request, method=method, **data, **kwargs)
         else:
             result = serializer.errors

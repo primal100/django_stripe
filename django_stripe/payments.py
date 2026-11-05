@@ -1,5 +1,4 @@
 import stripe
-import stripe.error
 import subscriptions
 
 # Next line is so these functions can be used by django_stripe user without needing to import from subscriptions
@@ -17,7 +16,7 @@ from .conf import settings
 from .logging import logger, p
 from . import signals
 
-from .utils import get_actual_user, user_description
+from .utils import get_actual_user, user_description, normalize_payment_method_kwargs
 from typing import List, Dict, Any, Callable, Generator, Optional, Type
 from .types import DjangoUserProtocol, SubscriptionInfoWithEvaluation
 
@@ -126,9 +125,9 @@ def create_checkout(user: DjangoUserProtocol, method: Callable, **kwargs) -> str
         'client_reference_id': user.id,
         'success_url': settings.STRIPE_CHECKOUT_SUCCESS_URL,
         'cancel_url': settings.STRIPE_CHECKOUT_CANCEL_URL,
-        'payment_method_types': settings.STRIPE_PAYMENT_METHOD_TYPES
+        'allowed_payment_method_types': settings.STRIPE_PAYMENT_METHOD_TYPES
     }
-    checkout_kwargs.update(**kwargs)
+    checkout_kwargs.update(normalize_payment_method_kwargs(kwargs))
     session = method(**checkout_kwargs)
     signals.checkout_created.send(sender=user, session=session)
     logger.debug('Created new checkout session %s for user %s', session['id'], user.id)
@@ -144,7 +143,7 @@ def create_subscription_checkout(user: DjangoUserProtocol, price_id: str, rest: 
     """
     try:
         retrieve_price(user, price_id, rest=rest)            # To check that price is allowed depending on settings
-    except stripe.error.InvalidRequestError:
+    except stripe.InvalidRequestError:
         raise raise_appropriate_not_found(rest, f"No such price: '{price_id}'")
     logger.debug('Creating new subscription checkout session for user %s', user.id)
     return create_checkout(user, subscriptions.create_subscription_checkout, price_id=price_id, **kwargs)
@@ -243,10 +242,10 @@ def create_setup_intent(user, **kwargs) -> stripe.SetupIntent:
     logger.debug('Creating new setup intent for user %s', user.id)
     setup_intent_kwargs = {
         'customer': user.stripe_customer_id,
-        'payment_method_types': settings.STRIPE_PAYMENT_METHOD_TYPES,
+        'allowed_payment_method_types': settings.STRIPE_PAYMENT_METHOD_TYPES,
         'confirm': False,
         'usage': "off_session"}
-    setup_intent_kwargs.update(kwargs)
+    setup_intent_kwargs.update(normalize_payment_method_kwargs(kwargs))
     setup_intent = stripe.SetupIntent.create(**setup_intent_kwargs)
     signals.setup_intent_created.send(sender=user, setup_intent=setup_intent)
     logger.debug('Created new setup intent for user %s: %s', user.id, setup_intent['id'])
@@ -329,7 +328,7 @@ def modify_subscription(user, sub_id: str, set_as_default_payment_method: bool =
     Raises StripeWrongCustomer is a user tries to modify a subscription belonging to another customer.
     The signal subscription_modified is sent.
     """
-    logger.debug('Modifying subscription %s for user %s price_id: %s for keys: %s', sub_id, user.id,
+    logger.debug('Modifying subscription %s for user %s with keys: %s', sub_id, user.id,
                  list(kwargs.keys()))
     subscription = subscriptions.modify_subscription(user, sub_id,
                                                      set_as_default_payment_method=set_as_default_payment_method,
@@ -371,7 +370,8 @@ def delete(user, obj_cls: Type, obj_id: str) -> Dict[str, Any]:
     An appropriate signal is sent for the given resource deletion.
     """
     logger.debug('Deleting %s for user %s', obj_id, user.id)
-    obj = subscriptions.delete(user, obj_cls, obj_id)
+    obj = (subscriptions.cancel_subscription(user, obj_id) if obj_cls is stripe.Subscription
+           else subscriptions.delete(user, obj_cls, obj_id))
     signals.send_signal_on_delete(user, obj_cls, obj)
     logger.debug('Deleted %s for user %s', obj_id, user.id)
     return obj
