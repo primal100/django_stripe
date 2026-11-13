@@ -24,8 +24,8 @@ dependencies = [
     "django>=5.2,<6.2",
     "djangorestframework",
     "inflect",
-    "stripe>=16.1,<17",
-    "stripe-subscriptions>=0.6,<0.7",
+    "stripe>=16",
+    "stripe-subscriptions>=0.7.0",
 ]
 
 [project.urls]
