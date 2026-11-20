@@ -1,8 +1,8 @@
 import stripe
 import subscriptions
 
-# Next line is so these functions can be used by django_stripe user without needing to import from subscriptions
-from subscriptions import cancel_subscription, cancel_subscription_for_product, delete_customer
+# Next line is so this function can be used by django_stripe user without needing to import from subscriptions
+from subscriptions import delete_customer
 
 from subscriptions.types import PaymentMethodType
 from functools import wraps
@@ -12,11 +12,16 @@ from django import http
 from django.utils import timezone
 from rest_framework.exceptions import NotAuthenticated, PermissionDenied, NotFound
 
-from .conf import settings
+from .conf import (
+    settings,
+    SUBSCRIPTION_CANCEL_AT_PERIOD_END,
+    SUBSCRIPTION_CANCEL_IMMEDIATE_PRORATED,
+    VALID_SUBSCRIPTION_CANCEL_BEHAVIORS,
+)
 from .logging import logger, p
 from . import signals
 
-from .utils import get_actual_user, user_description, normalize_payment_method_kwargs
+from .utils import get_actual_user, user_description, normalize_payment_method_kwargs, resource_dict
 from typing import List, Dict, Any, Callable, Generator, Optional, Type
 from .types import DjangoUserProtocol, SubscriptionInfoWithEvaluation
 
@@ -359,6 +364,77 @@ def retrieve(user: DjangoUserProtocol, obj_cls: Type, obj_id: str):
     return subscriptions.retrieve(user, obj_cls, obj_id)
 
 
+def _subscription_matches_product(sub: Any, product_id: str) -> bool:
+    sub = resource_dict(sub)
+    items = (sub.get('items') or {}).get('data', [])
+    for item in items:
+        price = item.get('price') or item.get('plan') or {}
+        product = price.get('product')
+        if isinstance(product, dict):
+            product = product.get('id')
+        if product == product_id:
+            return True
+    return False
+
+
+def _cancel_subscription(user: DjangoUserProtocol, subscription_id: str,
+                         cancel_behavior: Optional[str] = None, **kwargs) -> stripe.Subscription:
+    behavior = cancel_behavior if cancel_behavior is not None else settings.STRIPE_SUBSCRIPTION_CANCEL_BEHAVIOR
+    if isinstance(behavior, str):
+        behavior = behavior.strip().lower()
+    if behavior not in VALID_SUBSCRIPTION_CANCEL_BEHAVIORS:
+        valid = ', '.join(VALID_SUBSCRIPTION_CANCEL_BEHAVIORS)
+        raise ValueError(f"Invalid cancel_behavior: {behavior!r}. Must be one of: {valid}")
+    if behavior == SUBSCRIPTION_CANCEL_AT_PERIOD_END:
+        modify_kwargs = {'cancel_at_period_end': True}
+        modify_kwargs.update(kwargs)
+        return subscriptions.modify_subscription(user, subscription_id, **modify_kwargs)
+    if behavior == SUBSCRIPTION_CANCEL_IMMEDIATE_PRORATED:
+        sub = subscriptions.retrieve(user, stripe.Subscription, subscription_id, action="cancel")
+        cancel_kwargs = {'prorate': True, 'invoice_now': True}
+        cancel_kwargs.update(kwargs)
+        return stripe.Subscription.cancel(sub["id"], **cancel_kwargs)
+    if kwargs:
+        sub = subscriptions.retrieve(user, stripe.Subscription, subscription_id, action="cancel")
+        return stripe.Subscription.cancel(sub["id"], **kwargs)
+    return subscriptions.cancel_subscription(user, subscription_id)
+
+
+@get_actual_user
+@subscriptions.decorators.customer_id_required
+def cancel_subscription(user: DjangoUserProtocol, subscription_id: str,
+                        cancel_behavior: Optional[str] = None, **kwargs) -> stripe.Subscription:
+    """
+    Allow a user to cancel their subscription according to settings.STRIPE_SUBSCRIPTION_CANCEL_BEHAVIOR
+    (or an explicit cancel_behavior override: 'immediate', 'at_period_end', or 'immediate_prorated').
+    If a user attempts to cancel a subscription belonging to another customer, StripeWrongCustomer will be raised.
+    The signal subscription_cancelled is sent.
+    """
+    logger.debug('Cancelling subscription %s for user %s', subscription_id, user.id)
+    subscription = _cancel_subscription(user, subscription_id, cancel_behavior=cancel_behavior, **kwargs)
+    signals.send_signal_on_delete(user, stripe.Subscription, subscription)
+    logger.debug('Cancelled subscription %s for user %s', subscription_id, user.id)
+    return subscription
+
+
+@get_actual_user
+def cancel_subscription_for_product(user: DjangoUserProtocol, product_id: str,
+                                    cancel_behavior: Optional[str] = None, **kwargs) -> bool:
+    """
+    Allow a user to cancel their subscription by the id of the product they are subscribed to, if such a subscription exists.
+    Honors settings.STRIPE_SUBSCRIPTION_CANCEL_BEHAVIOR (or an explicit cancel_behavior override).
+    Returns True if at least one matching subscription exists for that user, otherwise False.
+    """
+    if not user or not user.stripe_customer_id:
+        return False
+    sub_cancelled = False
+    for sub in subscriptions.list_subscriptions(user):
+        if _subscription_matches_product(sub, product_id):
+            cancel_subscription(user, sub['id'], cancel_behavior=cancel_behavior, **kwargs)
+            sub_cancelled = True
+    return sub_cancelled
+
+
 @get_actual_user
 @subscriptions.decorators.customer_id_required
 def delete(user, obj_cls: Type, obj_id: str) -> Dict[str, Any]:
@@ -370,7 +446,7 @@ def delete(user, obj_cls: Type, obj_id: str) -> Dict[str, Any]:
     An appropriate signal is sent for the given resource deletion.
     """
     logger.debug('Deleting %s for user %s', obj_id, user.id)
-    obj = (subscriptions.cancel_subscription(user, obj_id) if obj_cls is stripe.Subscription
+    obj = (_cancel_subscription(user, obj_id) if obj_cls is stripe.Subscription
            else subscriptions.delete(user, obj_cls, obj_id))
     signals.send_signal_on_delete(user, obj_cls, obj)
     logger.debug('Deleted %s for user %s', obj_id, user.id)

@@ -204,6 +204,9 @@ class StripeSubscriptionView(APIView, StripeListMixin, StripeCreateWithSerialize
     def modify(self, request, sub_id: str, **data) -> Dict[str, Any]:
         return payments.modify_subscription(request.user, sub_id, **data)
 
+    def destroy(self, request, obj_id: str) -> Dict[str, Any]:
+        return payments.cancel_subscription(request.user, obj_id)
+
 
 class GoToSetupCheckoutView(LoginRequiredMixin, TemplateView):
     """

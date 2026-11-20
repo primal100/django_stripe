@@ -8,6 +8,16 @@ from .exceptions import ConfigurationException
 from typing import Optional, List, Dict, Any
 
 
+SUBSCRIPTION_CANCEL_IMMEDIATE = 'immediate'
+SUBSCRIPTION_CANCEL_AT_PERIOD_END = 'at_period_end'
+SUBSCRIPTION_CANCEL_IMMEDIATE_PRORATED = 'immediate_prorated'
+VALID_SUBSCRIPTION_CANCEL_BEHAVIORS = (
+    SUBSCRIPTION_CANCEL_IMMEDIATE,
+    SUBSCRIPTION_CANCEL_AT_PERIOD_END,
+    SUBSCRIPTION_CANCEL_IMMEDIATE_PRORATED,
+)
+
+
 def return_empty_kwargs(user, **kwargs) -> Dict:
     return {}
 
@@ -163,6 +173,27 @@ class Settings:
         How long to store keys in the Stripe Subscription Cache.
         """
         return getattr(django_settings, 'STRIPE_SUBSCRIPTION_CHECK_CACHE_TIMEOUT_SECONDS', DEFAULT_TIMEOUT)
+
+    @property
+    def STRIPE_SUBSCRIPTION_CANCEL_BEHAVIOR(self) -> str:
+        """
+        Controls how subscriptions are cancelled via django_stripe:
+        - 'immediate' (default): Cancel immediately with no proration.
+        - 'at_period_end': Cancel at the end of the current billing period (cancel_at_period_end=True).
+        - 'immediate_prorated': Cancel immediately with proration and a final invoice (prorate=True, invoice_now=True).
+        Can also be set with the STRIPE_SUBSCRIPTION_CANCEL_BEHAVIOR environment variable.
+        """
+        value = getattr(django_settings, 'STRIPE_SUBSCRIPTION_CANCEL_BEHAVIOR', None)
+        if value is None:
+            value = os.environ.get('STRIPE_SUBSCRIPTION_CANCEL_BEHAVIOR') or SUBSCRIPTION_CANCEL_IMMEDIATE
+        if isinstance(value, str):
+            value = value.strip().lower()
+        if value not in VALID_SUBSCRIPTION_CANCEL_BEHAVIORS:
+            valid = ', '.join(VALID_SUBSCRIPTION_CANCEL_BEHAVIORS)
+            raise ValueError(
+                f"Invalid STRIPE_SUBSCRIPTION_CANCEL_BEHAVIOR: {value!r}. Must be one of: {valid}"
+            )
+        return value
 
 
 settings = Settings()

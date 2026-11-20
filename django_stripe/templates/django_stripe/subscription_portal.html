@@ -3,7 +3,7 @@
 
 
 {% block modals %}
-  {% if product.subscription_info.sub_id %}
+  {% if product.subscription_info.sub_id and not product.subscription_info.cancel_at %}
 
   <!-- Modal Structure -->
   <div id="modal1" class="modal">
@@ -23,8 +23,13 @@
 
   {% block main_content %}
     {% if product.subscription_info.sub_id %}
+      {% if product.subscription_info.cancel_at %}
+        <p>Your subscription is scheduled to be cancelled on {{ product.subscription_info.cancel_at }}.</p>
+        <p>You may update your payment method below.</p>
+      {% else %}
         <p>Thanks for being a subscriber. Your next payment is due on {{ product.subscription_info.current_period_end }}. </p>
         <p>You may update your payment method below. Click <a class="modal-trigger" href="#modal1">here</a> to cancel your subscription.</p>
+      {% endif %}
     {%  else %}
 
 

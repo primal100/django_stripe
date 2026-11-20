@@ -318,7 +318,10 @@
       } else {
         console.log(result);
         if (result.cancel_at) {
-          confirmationElement.querySelector('#success-header').innerText = `Your subscription will be cancelled on ${result.cancel_at}`;
+          const cancelDate = new Date(result.cancel_at * 1000).toLocaleDateString(undefined, {
+            weekday: 'long', day: '2-digit', month: 'long', year: 'numeric'
+          });
+          confirmationElement.querySelector('#success-header').innerText = `Your subscription will be cancelled on ${cancelDate}`;
         }else{
           confirmationElement.querySelector('#success-header').innerText = `Your subscription has been cancelled`;
         }

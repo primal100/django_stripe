@@ -839,7 +839,7 @@ To update a Subscription for the authenticated user, send a PUT request to the i
 - billing_details: set_as_default_payment_method
 ```
 
-To cancel a Subscription for the authenticated user, send a DELETE request:
+To cancel a Subscription for the authenticated user, send a DELETE request. By default the subscription is cancelled immediately without proration; this can be configured with `STRIPE_SUBSCRIPTION_CANCEL_BEHAVIOR` (`'immediate'`, `'at_period_end'`, or `'immediate_prorated'`):
 
 ```http request
 DELETE /api/subscriptions/sub_1Jj4ozCz06et8VuzZEEgJno2/
@@ -1086,15 +1086,18 @@ def modify_subscription(user, sub_id: str, set_as_default_payment_method: bool =
     """
     
     
-def cancel_subscription(user, subscription_id: str) -> stripe.Subscription:
+def cancel_subscription(user, subscription_id: str, cancel_behavior: Optional[str] = None, **kwargs) -> stripe.Subscription:
     """
-    Allow a user to cancel their subscription.
+    Allow a user to cancel their subscription according to settings.STRIPE_SUBSCRIPTION_CANCEL_BEHAVIOR
+    (or an explicit cancel_behavior override: 'immediate', 'at_period_end', or 'immediate_prorated').
     If a user attempts to cancel a subscription belonging to another customer, StripeWrongCustomer will be raised.
+    The signal subscription_cancelled is sent.
     """
     
-def cancel_subscription_for_product(user, product_id: str) -> bool:
+def cancel_subscription_for_product(user, product_id: str, cancel_behavior: Optional[str] = None, **kwargs) -> bool:
     """
     Allow a user to cancel their subscription by the id of the product they are subscribed to, if such a subscription exists.
+    Honors settings.STRIPE_SUBSCRIPTION_CANCEL_BEHAVIOR (or an explicit cancel_behavior override).
     Returns True if the subscription exists for that user, otherwise False.
     """
 ```
@@ -1189,6 +1192,11 @@ The function signature is:
 - ```STRIPE_SUBSCRIPTION_CACHE_NAME: str```: Caching can be used when checking if a user is subscribed. This is the cache name to use for storing subscriptions.
 
 - ```STRIPE_SUBSCRIPTION_CHECK_CACHE_TIMEOUT_SECONDS: str```:  How long to store keys in the Stripe Subscription Cache.
+
+- ```STRIPE_SUBSCRIPTION_CANCEL_BEHAVIOR: str```: Controls how subscriptions are cancelled via ```django_stripe``` (including ```DELETE /api/subscriptions/<id>/```, ```payments.cancel_subscription```, ```payments.cancel_subscription_for_product```, and ```payments.delete```). Can also be set with the ```STRIPE_SUBSCRIPTION_CANCEL_BEHAVIOR``` environment variable. Supported values:
+  - ```'immediate'``` *(default)*: Cancel immediately with no proration (```stripe.Subscription.cancel```).
+  - ```'at_period_end'```: Cancel at the end of the current billing period (```stripe.Subscription.modify(..., cancel_at_period_end=True)```).
+  - ```'immediate_prorated'```: Cancel immediately with proration and a final invoice (```stripe.Subscription.cancel(..., prorate=True, invoice_now=True)```).
 
 
 ## Running tests
