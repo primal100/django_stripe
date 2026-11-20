@@ -6,10 +6,11 @@ import stripe
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from django_stripe import payments, signals
+from django_stripe.conf import settings as stripe_settings
 from django_stripe.utils import resource_dict
 from django_stripe.views import (
     StripeSubscriptionView, StripeInvoiceView, StripePaymentMethodView,
-    StripeSetupIntentView, SubscriptionHistoryView,
+    StripeSetupIntentView, SubscriptionHistoryView, SubscriptionPortalView,
 )
 from tests.django_stripe_testapp.models import User
 
@@ -180,3 +181,120 @@ def test_history_renders_multiple_items(monkeypatch):
     view.setup(request)
     html = render_to_string(view.template_name, view.get_context_data())
     assert html.count('eur 1200 / month') == 2
+
+
+def test_cancel_behavior_setting_resolution(settings, monkeypatch):
+    monkeypatch.delenv('STRIPE_SUBSCRIPTION_CANCEL_BEHAVIOR', raising=False)
+    assert stripe_settings.STRIPE_SUBSCRIPTION_CANCEL_BEHAVIOR == 'immediate'
+
+    monkeypatch.setenv('STRIPE_SUBSCRIPTION_CANCEL_BEHAVIOR', ' AT_PERIOD_END ')
+    assert stripe_settings.STRIPE_SUBSCRIPTION_CANCEL_BEHAVIOR == 'at_period_end'
+
+    settings.STRIPE_SUBSCRIPTION_CANCEL_BEHAVIOR = 'immediate_prorated'
+    assert stripe_settings.STRIPE_SUBSCRIPTION_CANCEL_BEHAVIOR == 'immediate_prorated'
+
+    settings.STRIPE_SUBSCRIPTION_CANCEL_BEHAVIOR = 'invalid_mode'
+    with pytest.raises(ValueError, match='STRIPE_SUBSCRIPTION_CANCEL_BEHAVIOR'):
+        _ = stripe_settings.STRIPE_SUBSCRIPTION_CANCEL_BEHAVIOR
+
+
+@pytest.mark.parametrize('source', ['setting', 'env'])
+@pytest.mark.parametrize('behavior', ['at_period_end', 'immediate_prorated'])
+def test_subscription_cancel_view_honors_cancel_behavior(settings, monkeypatch, source, behavior):
+    monkeypatch.delenv('STRIPE_SUBSCRIPTION_CANCEL_BEHAVIOR', raising=False)
+    if source == 'setting':
+        settings.STRIPE_SUBSCRIPTION_CANCEL_BEHAVIOR = behavior
+    else:
+        monkeypatch.setenv('STRIPE_SUBSCRIPTION_CANCEL_BEHAVIOR', behavior)
+
+    sub = subscription()
+    if behavior == 'at_period_end':
+        sub['cancel_at'] = 20
+        sub['status'] = 'active'
+    else:
+        sub['status'] = 'canceled'
+
+    monkeypatch.setattr(stripe.Subscription, 'retrieve', Mock(return_value=sub))
+    modify = Mock(return_value=sub)
+    cancel = Mock(return_value=sub)
+    monkeypatch.setattr(stripe.Subscription, 'modify', modify)
+    monkeypatch.setattr(stripe.Subscription, 'cancel', cancel)
+    send = Mock()
+    monkeypatch.setattr(signals, 'send_signal_on_delete', send)
+
+    request = APIRequestFactory().delete('/subscriptions/sub_test/', format='json')
+    force_authenticate(request, user=customer())
+    response = StripeSubscriptionView.as_view()(request, obj_id='sub_test')
+
+    assert response.status_code == 200
+    send.assert_called_once()
+    if behavior == 'at_period_end':
+        modify.assert_called_once_with('sub_test', cancel_at_period_end=True)
+        cancel.assert_not_called()
+        assert response.data['cancel_at'] == 20
+        assert response.data['status'] == 'active'
+    else:
+        cancel.assert_called_once_with('sub_test', prorate=True, invoice_now=True)
+        modify.assert_not_called()
+        assert response.data['status'] == 'canceled'
+
+
+@pytest.mark.parametrize('behavior', ['at_period_end', 'immediate_prorated'])
+def test_subscription_cancel_behaviors_check_owner(settings, monkeypatch, behavior):
+    from subscriptions.exceptions import StripeWrongCustomer
+    settings.STRIPE_SUBSCRIPTION_CANCEL_BEHAVIOR = behavior
+    sub = subscription()
+    sub['customer'] = 'cus_someone_else'
+    monkeypatch.setattr(stripe.Subscription, 'retrieve', Mock(return_value=sub))
+    modify = Mock(return_value=sub)
+    cancel = Mock(return_value=sub)
+    monkeypatch.setattr(stripe.Subscription, 'modify', modify)
+    monkeypatch.setattr(stripe.Subscription, 'cancel', cancel)
+    send = Mock()
+    monkeypatch.setattr(signals, 'send_signal_on_delete', send)
+
+    with pytest.raises(StripeWrongCustomer):
+        payments.cancel_subscription(customer(), 'sub_test')
+    modify.assert_not_called()
+    cancel.assert_not_called()
+    send.assert_not_called()
+
+
+def test_cancel_subscription_override_and_for_product(settings, monkeypatch):
+    import subscriptions
+    settings.STRIPE_SUBSCRIPTION_CANCEL_BEHAVIOR = 'at_period_end'
+    sub = subscription()
+    monkeypatch.setattr(stripe.Subscription, 'retrieve', Mock(return_value=sub))
+    cancel = Mock(return_value=sub)
+    modify = Mock(return_value=sub)
+    monkeypatch.setattr(stripe.Subscription, 'cancel', cancel)
+    monkeypatch.setattr(stripe.Subscription, 'modify', modify)
+
+    payments.cancel_subscription(customer(), 'sub_test', cancel_behavior='immediate_prorated', invoice_now=False)
+    cancel.assert_called_once_with('sub_test', prorate=True, invoice_now=False)
+    modify.assert_not_called()
+
+    monkeypatch.setattr(subscriptions, 'list_subscriptions', Mock(return_value=[sub]))
+    assert payments.cancel_subscription_for_product(customer(), 'prod_0') is True
+    modify.assert_called_once_with('sub_test', cancel_at_period_end=True)
+
+    assert payments.cancel_subscription_for_product(customer(), 'prod_other') is False
+
+    with pytest.raises(ValueError, match='Invalid cancel_behavior'):
+        payments.cancel_subscription(customer(), 'sub_test', cancel_behavior='unknown')
+
+
+def test_portal_renders_scheduled_cancellation(monkeypatch):
+    from django.template.loader import render_to_string
+    monkeypatch.setattr(payments, 'retrieve_product', Mock(return_value={
+        'id': 'prod_test',
+        'prices': [],
+        'subscription_info': {'sub_id': 'sub_test', 'current_period_end': 1700000000, 'cancel_at': 1700000000},
+    }))
+    view = SubscriptionPortalView()
+    request = APIRequestFactory().get('/')
+    request.user = customer()
+    view.setup(request)
+    html = render_to_string(view.template_name, view.get_context_data(), request=request)
+    assert 'scheduled to be cancelled on' in html
+    assert 'href="#modal1"' not in html
